@@ -6,19 +6,10 @@
       <q-icon name="error_outline" class="q-mr-sm" />
       {{ errorMessage }}
     </div>
-    <q-btn
-      v-if="showRetryButton"
-      label="Try Login Again"
-      color="primary"
-      icon="refresh"
-      @click="retryLogin"
-      class="q-mt-lg"
-      unelevated
-    />
-    <div
-      v-if="!showRetryButton && !authStore.isAuthenticated && !errorMessage"
-      class="text-caption text-grey-7 q-mt-md"
-    >
+    <q-btn v-if="showRetryButton" label="Try Login Again" color="primary" icon="refresh" @click="retryLogin"
+      class="q-mt-lg" unelevated />
+    <div v-if="!showRetryButton && !authStore.isAuthenticated && !errorMessage"
+      class="text-caption text-grey-7 q-mt-md">
       If this takes too long, please check your internet connection or try again later.
     </div>
   </q-page>
@@ -33,6 +24,7 @@ import {
 } from 'src/services/osuAuthService';
 import { useAuthStore } from 'src/services/auth';
 import { useQuasar } from 'quasar';
+import { Capacitor } from '@capacitor/core';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -144,49 +136,64 @@ async function handleAuthenticationFlow() {
   statusMessage.value = 'Initializing authentication...';
   errorMessage.value = null;
   showRetryButton.value = false;
-  const authStore = useAuthStore();
-  let codeToProcess = authStore.consumePendingOAuthCode();
-  console.log('[OsuCallbackPage] Code from authStore.consumePendingOAuthCode() IS:', codeToProcess);
-  console.log('[OsuCallbackPage] Type of codeToProcess:', typeof codeToProcess);
-  if (!codeToProcess) {
-    const codeFromQuery = route.query.code as string | undefined;
-    console.log(
-      '[OsuCallbackPage] Store code is null/undefined. Trying route.query.code:',
-      codeFromQuery,
-    );
-    if (codeFromQuery && typeof codeFromQuery === 'string' && codeFromQuery.trim() !== '') {
-      codeToProcess = codeFromQuery;
-      console.log('[OsuCallbackPage] Using code from route query as fallback:', codeToProcess);
-    }
-  }
-  if (codeToProcess && typeof codeToProcess === 'string' && codeToProcess.trim() !== '') {
-    console.log(
-      '[OsuCallbackPage] VALID code found. Calling processAuthentication with:',
-      codeToProcess,
-    );
-    await processAuthentication(codeToProcess);
-    return;
-  }
-  if (!authStore.isAuthenticated) {
-    console.log(
-      '[OsuCallbackPage] NO VALID CODE obtained and not authenticated. Initiating Osu! login.',
-    );
-    statusMessage.value = 'Redirecting to Osu! for login...';
+  let codeToProcess: string | undefined | null = null;
+
+  if (Capacitor.isNativePlatform()) {
+    // Capacitor 流程: App.vue 将 code 存入 authStore
+    const authStore = useAuthStore();
+    codeToProcess = authStore.consumePendingOAuthCode();
+    console.log('[OsuCallbackPage Capacitor] Code from authStore.consumePendingOAuthCode():', codeToProcess);
+  } else if (window.electron?.ipcRenderer) {
+    // Electron 流程: 通过 IPC 从主进程获取暂存的 code
+    console.log('[OsuCallbackPage Electron] Attempting to fetch pending auth code from main process...');
     try {
-      await redirectToOsuLogin();
-    } catch (e) {
-      console.error('[OsuCallbackPage] Error calling redirectToOsuLogin:', e);
-      errorMessage.value =
-        (e instanceof Error ? e.message : String(e)) || 'Failed to initiate Osu! login.';
-      statusMessage.value = 'Error';
-      showRetryButton.value = true;
-      isLoading.value = false;
+      const result = await window.electron.ipcRenderer.invoke('get-pending-oauth-code');
+      const r = result as { success?: boolean; code?: string; error?: string };
+      if (r && r.success && r.code && typeof r.code === 'string') {
+        console.log('[OsuCallbackPage Electron] Successfully fetched stashed code from main process:', r.code);
+        codeToProcess = r.code;
+      } else {
+        console.log('[OsuCallbackPage Electron] No stashed code from main process or error:', r?.error);
+      }
+    } catch (ipcError) {
+      console.error('[OsuCallbackPage Electron] Error invoking IPC for get-pending-oauth-code:', ipcError);
     }
   } else {
-    console.warn('[OsuCallbackPage] Authenticated but no code processed. Redirecting to settings.');
-    statusMessage.value = 'Already authenticated or invalid state.';
-    isLoading.value = false;
-    void router.replace({ name: 'settings' });
+    // 其他环境或备用：尝试从路由参数获取 (如果 App.vue 在某些情况下仍然传递了)
+    const codeFromQuery = route.query.code as string | undefined;
+    if (codeFromQuery && typeof codeFromQuery === 'string' && codeFromQuery.trim() !== '') {
+      console.log('[OsuCallbackPage Fallback] Code obtained from route query:', codeFromQuery);
+      codeToProcess = codeFromQuery;
+    }
+  }
+
+  if (codeToProcess && typeof codeToProcess === 'string' && codeToProcess.trim() !== '') {
+    console.log('[OsuCallbackPage] Valid code found. Processing authentication with:', codeToProcess);
+    await processAuthentication(codeToProcess);
+  } else {
+    // 没有获取到 code，并且用户未认证，则发起新的 OAuth 流程
+    const authStore = useAuthStore(); // 再次获取，确保状态最新
+    if (!authStore.isAuthenticated) {
+      console.log('[OsuCallbackPage] NO VALID CODE obtained and not authenticated. Initiating Osu! login.');
+      statusMessage.value = 'Redirecting to Osu! for login...';
+      try {
+        await redirectToOsuLogin(); // redirectToOsuLogin 内部处理平台差异打开浏览器
+      } catch (e: unknown) {
+        console.error('[OsuCallbackPage] Error calling redirectToOsuLogin:', e);
+        errorMessage.value = e instanceof Error ? e.message : 'Failed to initiate Osu! login.';
+        statusMessage.value = 'Error';
+        showRetryButton.value = true;
+        isLoading.value = false;
+      }
+    } else {
+      // 已认证但没有处理任何 code (例如，直接访问了此页面)
+      console.warn('[OsuCallbackPage] Authenticated but no code processed. Redirecting to settings.');
+      statusMessage.value = 'Already authenticated or invalid state.';
+      isLoading.value = false;
+      router.replace({ name: 'settings' }).catch((err) => {
+        console.error('Navigation error:', err);
+      });
+    }
   }
 }
 
