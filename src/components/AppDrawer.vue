@@ -155,7 +155,7 @@ const utilityLinks: NavLink[] = [
 }
 
 .drawer-item {
-  border-radius: $border-radius-root / 2;
+  border-radius: calc($border-radius-root / 2);
   margin: 2px 10px;
   padding: 10px 16px;
   color: $drawer-text;
