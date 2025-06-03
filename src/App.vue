@@ -36,11 +36,33 @@ onMounted(() => {
   // --- 只监听 oauth-callback-pending，移除 navigate-to-oauth-callback-with-code ---
   if (window.electron?.ipcRenderer) {
     const pendingCallbackHandler = () => {
-      console.log('[App.vue] Received "oauth-callback-pending". Navigating to osuCallback page.');
-      // 强制刷新 osuCallback 页面，带上唯一参数，确保组件重新 mount
-      router.push({ name: 'osuCallback', query: { t: Date.now() } }).catch((err) => {
-        console.error('[App.vue] Navigation to osuCallback page (pending) failed:', err);
-      });
+      console.log(
+        '[App.vue] Received "oauth-callback-pending". Retrieving authorization code from main process.',
+      );
+
+      // 异步处理OAuth码获取
+      (async () => {
+        try {
+          // 从Electron主进程获取存储的授权码
+          const response = await window.electron?.ipcRenderer?.invoke('get-pending-oauth-code');
+          console.log('[App.vue] Response from main process:', response);
+          
+          if (response && typeof response === 'object' && 'success' in response && response.success && 'code' in response && response.code) {
+            console.log('[App.vue] Retrieved OAuth code from main process:', response.code);
+            // 将授权码存储到authStore中
+            authStore.setPendingOAuthCode(response.code as string);
+          } else {
+            console.warn('[App.vue] No pending OAuth code found in main process:', response);
+          }
+        } catch (error) {
+          console.error('[App.vue] Failed to retrieve OAuth code from main process:', error);
+        }
+
+        // 强制刷新 osuCallback 页面，带上唯一参数，确保组件重新 mount
+        router.push({ name: 'osuCallback', query: { t: Date.now() } }).catch((err) => {
+          console.error('[App.vue] Navigation to osuCallback page failed:', err);
+        });
+      })().catch(console.error);
     };
     window.electron.ipcRenderer.on('oauth-callback-pending', pendingCallbackHandler);
     unlistenNavigateCallback = () => {

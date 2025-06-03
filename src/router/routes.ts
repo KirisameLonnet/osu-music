@@ -64,6 +64,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/SettingsPage.vue'), // 你需要创建这个页面
         meta: { title: 'Settings', icon: 'settings' },
       },
+      // 认证设置页
+      {
+        path: 'auth-settings', // 访问 '/auth-settings'
+        name: 'authSettings',
+        component: () => import('pages/AuthSettingsPage.vue'), // 认证设置页面
+        meta: { title: 'Authentication Settings', icon: 'account_circle' },
+      },
       {
         path: 'oauth/callback', // Osu! 回调路由
         name: 'osuCallback', // 路由名称

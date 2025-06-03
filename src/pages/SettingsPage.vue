@@ -2,243 +2,161 @@
 <template>
   <q-page padding class="settings-page text-page-text">
     <div class="q-mx-auto" style="max-width: 700px">
-      <h4 class="q-mt-none q-mb-md text-h4">Settings</h4>
+      <h4 class="q-mt-none q-mb-md text-h4">General Settings</h4>
       <q-separator dark spaced />
 
-      <!-- Osu! Auth Configuration Section -->
+      <!-- Authentication Settings Link -->
       <div class="q-mt-lg">
         <q-card class="settings-card" flat bordered>
           <q-card-section>
-            <div class="text-h6">Osu! Authentication Configuration</div>
+            <div class="text-h6">Authentication</div>
             <div class="text-caption text-grey-6 q-mt-xs">
-              You need to create your own Osu! OAuth application.
-              <a
-                href="https://osu.ppy.sh/home/account/edit#oauth"
-                target="_blank"
-                class="text-primary"
-              >
-                Create one on the Osu! website <q-icon name="open_in_new" size="xs" /> </a
-              >.
+              Configure your Osu! authentication settings and login status.
             </div>
           </q-card-section>
           <q-separator dark />
           <q-card-section>
-            <div class="text-subtitle1 q-mb-sm">Your Application's Callback URI:</div>
-            <q-input
-              :model-value="osuCallbackUriToDisplay"
-              label="This is the Callback URI for your Osu! App"
-              readonly
-              dark
-              outlined
-              dense
-              class="q-mb-md callback-uri-input"
-            >
-              <template v-slot:append>
-                <q-btn
-                  flat
-                  dense
-                  round
-                  icon="content_copy"
-                  @click="copyCallbackUri"
-                  aria-label="Copy Callback URI"
-                >
-                  <q-tooltip>Copy to clipboard</q-tooltip>
-                </q-btn>
-              </template>
-            </q-input>
-            <div class="text-caption text-warning">
-              <q-icon name="warning" class="q-mr-xs" />
-              Ensure this exact URI is set as a "Redirect URI" in your Osu! OAuth application
-              settings.
-            </div>
-          </q-card-section>
-          <q-separator dark spaced />
-          <q-card-section>
-            <q-form @submit="onSaveAuthConfig" class="q-gutter-md">
-              <q-input
-                v-model="form.osuClientId"
-                label="Osu! Client ID"
-                outlined
-                dark
-                dense
-                lazy-rules
-                :rules="[(val) => !!val || 'Client ID is required']"
-                placeholder="Enter your Osu! Client ID"
-                clearable
-              />
-              <q-input
-                v-model="form.osuClientSecret"
-                label="Osu! Client Secret"
-                type="password"
-                outlined
-                dark
-                dense
-                lazy-rules
-                :rules="[(val) => !!val || 'Client Secret is required']"
-                placeholder="Enter your Osu! Client Secret"
-                clearable
-              />
-              <div class="row justify-end">
-                <q-btn label="Save Auth Config" type="submit" color="primary" unelevated />
-              </div>
-            </q-form>
+            <q-btn
+              label="Authentication Settings"
+              color="primary"
+              icon="account_circle"
+              @click="goToAuthSettings"
+              class="full-width"
+              unelevated
+            />
           </q-card-section>
         </q-card>
       </div>
 
-      <!-- Osu! Account Login/Logout Section -->
+      <!-- Playback Settings -->
       <div class="q-mt-xl">
         <q-card class="settings-card" flat bordered>
           <q-card-section>
-            <div class="text-h6">Osu! Account Status</div>
+            <div class="text-h6">Playback</div>
+            <div class="text-caption text-grey-6 q-mt-xs">
+              Configure audio playback preferences.
+            </div>
           </q-card-section>
           <q-separator dark />
-          <q-card-section v-if="authStore.isAuthenticated && authStore.user">
-            <div class="row items-center q-col-gutter-md">
-              <div class="col-auto">
-                <q-avatar size="72px">
-                  <img :src="authStore.user.avatar_url" :alt="authStore.user.username" />
-                </q-avatar>
-              </div>
-              <div class="col">
-                <div class="text-subtitle1 text-weight-bold">{{ authStore.user.username }}</div>
-                <div class="text-caption text-grey-6">ID: {{ authStore.user.id }}</div>
-              </div>
+          <q-card-section>
+            <div class="q-gutter-md">
+              <q-toggle
+                v-model="autoplay"
+                label="Autoplay next track"
+                color="primary"
+                dark
+                @update:model-value="onAutoplayChange"
+              />
+              <q-toggle
+                v-model="shuffle"
+                label="Shuffle mode"
+                color="primary"
+                dark
+                @update:model-value="onShuffleChange"
+              />
+              <q-toggle
+                v-model="repeat"
+                label="Repeat mode"
+                color="primary"
+                dark
+                @update:model-value="onRepeatChange"
+              />
             </div>
-            <q-btn
-              label="Logout from Osu!"
-              color="negative"
-              @click="handleLogout"
-              class="q-mt-md full-width"
-              unelevated
-            />
-          </q-card-section>
-          <q-card-section v-else>
-            <p v-if="!canLogin" class="text-negative">
-              Please configure your Osu! API Client ID and Client Secret above before logging in.
-            </p>
-            <q-btn
-              v-else
-              label="Login with Osu!"
-              color="primary"
-              icon-right="login"
-              @click="handleOsuLogin"
-              class="full-width"
-              size="lg"
-              unelevated
-              :loading="authStore.isLoading"
-            />
           </q-card-section>
         </q-card>
       </div>
-      <!-- ... (Appearance settings, if any) ... -->
+
+      <!-- About Section -->
+      <div class="q-mt-xl">
+        <q-card class="settings-card" flat bordered>
+          <q-card-section>
+            <div class="text-h6">About</div>
+            <div class="text-caption text-grey-6 q-mt-xs">Information about Osu! Music Fusion.</div>
+          </q-card-section>
+          <q-separator dark />
+          <q-card-section>
+            <div class="q-gutter-sm">
+              <div class="text-body2">
+                <strong>Osu! Music Fusion</strong>
+              </div>
+              <div class="text-caption text-grey-6">Version 1.0.0</div>
+              <div class="text-caption text-grey-6">
+                A modern music streaming application for Osu! beatmaps.
+              </div>
+              <div class="q-mt-md">
+                <q-btn
+                  label="View on GitHub"
+                  icon="code"
+                  color="secondary"
+                  flat
+                  dense
+                  @click="openGitHub"
+                />
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
     </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import { useQuasar, copyToClipboard } from 'quasar';
-import { useAuthStore } from 'src/services/auth'; // <--- 确认路径
-import { useSettingsStore } from 'src/stores/settingsStore';
+import { ref } from 'vue';
+import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 
 const $q = useQuasar();
-const authStore = useAuthStore();
-const settingsStore = useSettingsStore();
 const router = useRouter();
 
-const form = ref({
-  osuClientId: '',
-  osuClientSecret: '',
-});
+// Audio settings
+const autoplay = ref(true);
+const shuffle = ref(false);
+const repeat = ref(false);
 
-// 这个值应该与 osuAuthService.ts 中的 OSU_REDIRECT_URI 和 Electron 主进程配置一致
-const osuCallbackUriToDisplay = ref<string>('osu-music-fusion://oauth/callback');
+function goToAuthSettings() {
+  router.push({ name: 'authSettings' }).catch(console.error);
+}
 
-// PKCE
-const canLogin = computed(() => !!settingsStore.osuClientId && !!settingsStore.osuClientSecret);
-
-onMounted(() => {
-  // 从 store 加载已保存的设置到表单
-  // settingsStore.loadSettings(); // 如果 store 的 state 初始化时没有加载最新值
-  form.value.osuClientId = settingsStore.osuClientId || '';
-  form.value.osuClientSecret = settingsStore.osuClientSecret || '';
-});
-
-function onSaveAuthConfig() {
-  const clientIdValue = form.value.osuClientId;
-  const clientSecretValue = form.value.osuClientSecret;
-
-  // 检查是否为 null 或 undefined，以及 trim 后是否为空字符串
-  if (!clientIdValue || typeof clientIdValue !== 'string' || !clientIdValue.trim()) {
-    $q.notify({ type: 'negative', message: 'Osu! Client ID is required and cannot be empty.' });
-    return;
-  }
-  if (!clientSecretValue || typeof clientSecretValue !== 'string' || !clientSecretValue.trim()) {
-    $q.notify({ type: 'negative', message: 'Osu! Client Secret is required and cannot be empty.' });
-    return;
-  }
-
-  // 到这里，我们知道它们都是非空字符串了
-  settingsStore.saveSettings({
-    osuClientId: clientIdValue.trim(),
-    osuClientSecret: clientSecretValue.trim(),
+function onAutoplayChange(enabled: boolean) {
+  // TODO: Implement autoplay setting logic
+  console.log('Autoplay:', enabled);
+  $q.notify({
+    message: `Autoplay ${enabled ? 'enabled' : 'disabled'}`,
+    color: 'info',
+    icon: enabled ? 'play_arrow' : 'pause',
   });
-  $q.notify({ type: 'positive', message: 'Osu! Auth Config saved!' });
 }
 
-async function copyCallbackUri() {
-  try {
-    await copyToClipboard(osuCallbackUriToDisplay.value);
-    $q.notify({ message: 'Callback URI copied!', color: 'positive', icon: 'content_paste' });
-  } catch {
-    $q.notify({ message: 'Failed to copy.', color: 'negative' });
-  }
+function onShuffleChange(enabled: boolean) {
+  // TODO: Implement shuffle setting logic
+  console.log('Shuffle:', enabled);
+  $q.notify({
+    message: `Shuffle ${enabled ? 'enabled' : 'disabled'}`,
+    color: 'info',
+    icon: 'shuffle',
+  });
 }
 
-async function handleOsuLogin() {
-  if (!canLogin.value) {
-    $q.notify({
-      type: 'warning',
-      message:
-        'Please configure your Osu! API Client ID and Client Secret in the settings above before logging in.',
-      multiLine: true,
-    });
-    return;
-  }
-  try {
-    // 只跳转到 callback 页面，由 callback 页面负责发起 OAuth 跳转
-    await router.push({ name: 'osuCallback' });
-  } catch (error) {
-    console.error('Failed to navigate to Osu! callback page:', error);
-    $q.notify({
-      type: 'negative',
-      message: 'Could not navigate to Osu! login page. Check console for errors.',
-    });
-  }
+function onRepeatChange(enabled: boolean) {
+  // TODO: Implement repeat setting logic
+  console.log('Repeat:', enabled);
+  $q.notify({
+    message: `Repeat ${enabled ? 'enabled' : 'disabled'}`,
+    color: 'info',
+    icon: 'repeat',
+  });
 }
 
-function handleLogout() {
-  authStore.logout();
-  $q.notify({ type: 'info', message: 'Successfully logged out from Osu!' });
-  router.push('/').catch((err) => console.error('Logout navigation error:', err));
+function openGitHub() {
+  window.open('https://github.com/KirisameLonnet/osu-music', '_blank');
 }
 </script>
 
 <style lang="scss" scoped>
-@use 'sass:color'; // 确保导入，如果 $dark-page 来自全局变量则不需要在这里再次定义
+@use 'sass:color';
 
-// 假设 $dark-page 来自你的 quasar.variables.scss
-// $dark-page: #121218 !default;
-
-.settings-page {
-  //
-}
 .settings-card {
   background-color: color.adjust($dark-page, $lightness: 5%);
-}
-.callback-uri-input :deep(.q-field__control) {
-  background-color: color.adjust($dark-page, $lightness: -3%);
 }
 </style>
