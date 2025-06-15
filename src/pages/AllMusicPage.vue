@@ -75,6 +75,12 @@
               :disable="musicStore.totalTracks === 0"
               class="lazer-action-btn lazer-bg-purple"
             />
+            <q-btn
+              icon="bug_report"
+              label="Debug"
+              @click="showDebugMenu = true"
+              class="lazer-action-btn lazer-bg-orange"
+            />
           </div>
         </div>
       </div>
@@ -294,6 +300,53 @@
     </section>
 
     <!-- 歌曲信息对话框 -->
+
+    <!-- 调试菜单对话框 -->
+    <q-dialog v-model="showDebugMenu">
+      <q-card style="min-width: 400px">
+        <q-card-section>
+          <div class="text-h6">🐛 Debug Tools</div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          <div class="q-mb-md">
+            <strong>Current Stats:</strong><br />
+            Total Tracks: {{ musicStore.totalTracks }}<br />
+            Filtered Tracks: {{ filteredTracks.length }}<br />
+            Music Store Loading: {{ musicStore.isLoading }}<br />
+            Music Store Error: {{ musicStore.error || 'None' }}
+          </div>
+
+          <div class="row q-gutter-sm">
+            <q-btn
+              color="primary"
+              label="Sync Library"
+              @click="syncLibrary"
+              :loading="isSyncing"
+              class="col-12 q-mb-sm"
+            />
+            <q-btn
+              color="warning"
+              label="Clean Library"
+              @click="cleanLibrary"
+              :loading="isCleaning"
+              class="col-12 q-mb-sm"
+            />
+            <q-btn
+              color="negative"
+              label="Reset Library"
+              @click="confirmResetLibrary"
+              class="col-12 q-mb-sm"
+            />
+            <q-btn color="info" label="Log Library Data" @click="logLibraryData" class="col-12" />
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat label="Close" @click="showDebugMenu = false" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
@@ -314,6 +367,9 @@ const searchQuery = ref('');
 const sortBy = ref('title');
 const windowWidth = ref(window.innerWidth);
 const windowHeight = ref(window.innerHeight);
+const showDebugMenu = ref(false);
+const isSyncing = ref(false);
+const isCleaning = ref(false);
 
 // 计算属性
 const favoriteCount = computed(() => {
@@ -521,6 +577,94 @@ const confirmDeleteTrack = (track: MusicTrack) => {
   });
 };
 
+// 调试方法
+const syncLibrary = async () => {
+  isSyncing.value = true;
+  try {
+    // 假设musicStore有syncMusicLibrary方法，如果没有我们可以直接调用服务
+    await musicStore.syncMusicLibrary();
+    $q.notify({
+      message: 'Library synced successfully',
+      icon: 'sync',
+      color: 'positive',
+    });
+  } catch (error) {
+    console.error('Sync failed:', error);
+    $q.notify({
+      message: 'Failed to sync library',
+      icon: 'error',
+      color: 'negative',
+    });
+  } finally {
+    isSyncing.value = false;
+  }
+};
+
+const cleanLibrary = async () => {
+  isCleaning.value = true;
+  try {
+    // 清理无效的音乐记录
+    await musicStore.cleanupMusicLibrary();
+    $q.notify({
+      message: 'Library cleaned successfully',
+      icon: 'cleaning_services',
+      color: 'positive',
+    });
+  } catch (error) {
+    console.error('Cleanup failed:', error);
+    $q.notify({
+      message: 'Failed to clean library',
+      icon: 'error',
+      color: 'negative',
+    });
+  } finally {
+    isCleaning.value = false;
+  }
+};
+
+const confirmResetLibrary = () => {
+  $q.dialog({
+    title: 'Reset Music Library',
+    message: 'This will remove all music records (but not files). Are you sure?',
+    cancel: true,
+    persistent: true,
+  }).onOk(async () => {
+    try {
+      await musicStore.resetMusicLibrary();
+      $q.notify({
+        message: 'Library reset successfully',
+        icon: 'refresh',
+        color: 'positive',
+      });
+    } catch (error) {
+      console.error('Reset failed:', error);
+      $q.notify({
+        message: 'Failed to reset library',
+        icon: 'error',
+        color: 'negative',
+      });
+    }
+  });
+};
+
+const logLibraryData = () => {
+  console.log('=== MUSIC LIBRARY DEBUG INFO ===');
+  console.log('Music Store State:', {
+    totalTracks: musicStore.totalTracks,
+    tracks: musicStore.tracks,
+    isLoading: musicStore.isLoading,
+    error: musicStore.error,
+  });
+  console.log('Filtered Tracks:', filteredTracks.value);
+  console.log('Search Query:', searchQuery.value);
+  console.log('Sort By:', sortBy.value);
+  $q.notify({
+    message: 'Debug info logged to console',
+    icon: 'info',
+    color: 'info',
+  });
+};
+
 // 转换为播放列表歌曲格式
 const convertToPlaylistTrack = (track: MusicTrack): Omit<PlaylistTrack, 'addedAt'> => {
   return {
@@ -721,12 +865,12 @@ onUnmounted(() => {
 
     .stats-cards {
       .stat-card {
-        background: rgba(30, 30, 33, 0.7); // 参考PlaylistCard的更深背景色
-        backdrop-filter: blur(15px);
-        border: 1px solid rgba(255, 255, 255, 0.12); // 与PlaylistCard一致的边框
+        background: rgba(255, 255, 255, 0.05); // 与 PlaylistPage 完全一致的卡片背景
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1); // 与 PlaylistPage 一致的边框
         border-radius: 8px;
         transition: all 0.25s ease-in-out;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 
         .q-icon {
           color: #ff69b4;
@@ -744,7 +888,7 @@ onUnmounted(() => {
         &:hover {
           transform: translateY(-3px) scale(1.02);
           box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-          background: rgba(35, 35, 40, 0.8); // 参考PlaylistCard的悬停背景色
+          background: #35353a; // 悬停时稍微亮一点的深灰色
           border-color: rgba(255, 105, 180, 0.5);
         }
       }
@@ -892,16 +1036,15 @@ onUnmounted(() => {
     .q-input,
     .q-select {
       :deep(.q-field__control) {
-        background: rgba(30, 30, 33, 0.7); // 参考PlaylistCard的更深背景色
-        backdrop-filter: blur(15px);
+        background: #2a2a2e; // 更深的灰色背景
         border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         color: #f0f0f0;
         transition: all 0.2s ease-in-out;
 
         &:hover {
           border-color: rgba(255, 105, 180, 0.5);
-          background: rgba(35, 35, 40, 0.8); // 悬停时稍微亮一点的深色
+          background: #35353a; // 悬停时稍微亮一点的深灰色
         }
       }
 
@@ -1030,17 +1173,16 @@ onUnmounted(() => {
     }
 
     .music-list-item {
-      background: rgba(30, 30, 33, 0.7); // 参考PlaylistCard的更深背景色
-      backdrop-filter: blur(15px);
-      border: 1px solid rgba(255, 255, 255, 0.12); // 与PlaylistCard一致的边框
+      background: #2a2a2e; // 更深的灰色背景，与其他组件一致
+      border: 1px solid rgba(196, 201, 212, 0.15); // 使用主文字颜色的透明边框
       border-radius: 6px;
       margin-bottom: 8px;
       padding: 10px 16px;
       transition: all 0.2s ease-in-out;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 
       &:hover {
-        background: rgba(35, 35, 40, 0.8); // 参考PlaylistCard的悬停背景色
+        background: #35353a; // 悬停时稍微亮一点的深灰色
         border-color: rgba(255, 105, 180, 0.4);
         transform: translateY(-1px) scale(1.01);
         box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
@@ -1255,56 +1397,52 @@ onUnmounted(() => {
 // 菜单样式（用于列表视图的次级菜单）
 :deep(.q-menu) {
   .q-list {
-    background: #0d0d0d !important; // 更深的黑色背景
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    border-radius: 12px;
-    padding: 8px 0;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
-    min-width: 220px;
+    background: #1a1a1a; // 更深的黑色背景
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 6px 0;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    min-width: 200px;
   }
 
   .q-item {
-    color: #ffffff !important; // 纯白色文字
+    color: #ffffff !important; // 强制白色文字
     border-radius: 8px;
-    margin: 4px 10px;
-    padding: 14px 18px;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    margin: 3px 8px;
+    padding: 12px 16px;
+    transition: all 0.25s ease;
     font-weight: 500;
-    font-size: 14px;
 
     &:hover {
-      background: rgba(255, 105, 180, 0.15) !important;
+      background: rgba(255, 105, 180, 0.12) !important;
       color: #ff69b4 !important;
-      transform: translateX(6px);
-      box-shadow: 0 4px 12px rgba(255, 105, 180, 0.2);
+      transform: translateX(4px);
     }
 
     .q-icon {
       color: inherit !important;
-      margin-right: 14px;
-      font-size: 18px;
+      margin-right: 12px;
     }
 
     // 删除按钮特殊样式
     &.text-negative {
-      color: #ff6b6b !important;
+      color: #ff7675 !important;
 
       &:hover {
-        background: rgba(255, 107, 107, 0.15) !important;
-        color: #ff5252 !important;
-        box-shadow: 0 4px 12px rgba(255, 107, 107, 0.2);
+        background: rgba(255, 118, 117, 0.15) !important;
+        color: #ff5757 !important;
       }
 
       .q-icon {
-        color: #ff6b6b !important;
+        color: #ff7675 !important;
       }
     }
   }
 
   .q-separator {
-    background: rgba(255, 255, 255, 0.1) !important;
-    margin: 10px 16px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 8px 12px;
     height: 1px;
   }
 }

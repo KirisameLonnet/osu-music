@@ -1,13 +1,303 @@
-# 跨平台兼容性配置
+# OSU! Music - 跨平台桥接层文档
 
-## 支持的操作系统
+## 架构概述
 
-osu! Music 应用支持以下操作系统：
+本项目实现了统一的跨平台桥接层，使得 Electron 和 Capacitor（iOS/Android）能够无缝调用相同的接口。通过抽象化平台细节，确保业务逻辑代码在所有平台上保持一致。
 
-### Windows
+## 平台支持
 
-- **支持版本**: Windows 10 及以上
-- **音乐目录**: `%USERPROFILE%\Music\osu-music\`
+- ✅ **Electron** (Windows, macOS, Linux)
+- ✅ **iOS** (通过 Capacitor)
+- ✅ **Android** (通过 Capacitor)
+- ✅ **Web** (降级支持)
+
+## 核心组件
+
+### 1. 平台接口定义 (`src/services/platform/types.ts`)
+
+定义了统一的平台服务接口，包括：
+
+- 📂 **文件系统操作** - 读写文件、目录管理
+- 🌐 **HTTP 请求** - 统一的网络请求接口
+- 💾 **本地存储** - 跨平台的键值存储
+- 🔐 **OAuth 认证** - 统一的认证流程
+- 📁 **文件选择** - 跨平台文件选择器
+- 🔄 **应用生命周期** - 应用状态管理
+- 📱 **移动端特性** - 状态栏、通知等
+
+### 2. Electron 实现 (`src/services/platform/electron.ts`)
+
+通过 Electron IPC 实现所有平台接口：
+
+```typescript
+// 示例：读取文件
+await platform.readFile({ path: '/path/to/file.txt', encoding: 'utf8' });
+```
+
+### 3. Capacitor 实现 (`src/services/platform/capacitor.ts`)
+
+使用 Capacitor 插件实现移动端功能：
+
+- 📱 **iOS 特殊支持**：在 Files app 中创建专用的 OSU! Music 文件夹
+- 🎵 **音频文件管理**：支持导入和管理音频文件
+- 📁 **目录结构**：自动创建 Music、Playlists、Cache、Covers 子目录
+
+### 4. 平台工厂 (`src/services/platform/index.ts`)
+
+自动检测运行环境并返回对应的平台实现：
+
+```typescript
+import { getPlatformService } from '@/services/platform';
+
+const platform = getPlatformService(); // 自动选择正确的实现
+const info = platform.getPlatformInfo();
+console.log(`Running on: ${info.type}`);
+```
+
+## 使用示例
+
+### 基础使用
+
+```typescript
+import { getPlatformService } from '@/services/platform';
+
+const platform = getPlatformService();
+
+// 检查平台信息
+const info = platform.getPlatformInfo();
+console.log(`Platform: ${info.type}, Native: ${info.isNative}`);
+
+// 文件操作
+await platform.writeFile({
+  path: 'songs/my-song.mp3',
+  data: audioData,
+});
+
+const songData = await platform.readFile({
+  path: 'songs/my-song.mp3',
+  encoding: 'base64',
+});
+
+// HTTP 请求
+const response = await platform.httpRequest({
+  url: 'https://api.example.com/data',
+  method: 'GET',
+});
+
+// 本地存储
+await platform.setStorage('user-preferences', JSON.stringify(prefs));
+const savedPrefs = await platform.getStorage('user-preferences');
+```
+
+### 音乐服务集成
+
+```typescript
+import { getMusicService } from '@/services/musicService';
+
+const musicService = getMusicService();
+
+// 导入音乐文件（跨平台）
+const importedTracks = await musicService.importMusicFiles();
+
+// 创建播放列表
+const playlist = await musicService.createPlaylist('My Favorites', tracks);
+
+// iOS 特定：获取 OSU Music 目录
+const osuDir = await musicService.getOsuMusicDirectory();
+console.log(`OSU Music directory: ${osuDir}`);
+```
+
+## 构建和部署
+
+### Electron 构建
+
+```bash
+# 开发
+npm run dev:electron
+
+# 构建
+npm run build:electron
+
+# 特定平台构建
+npm run build:electron:mac
+npm run build:electron:win
+npm run build:electron:linux
+```
+
+### Capacitor 构建
+
+```bash
+# 添加平台
+npm run cap:add:ios
+npm run cap:add:android
+
+# 开发
+npm run dev:ios
+npm run dev:android
+
+# 构建
+npm run build:ios
+npm run build:android
+
+# 同步代码
+npm run cap:sync
+```
+
+### 配置文件
+
+#### Capacitor 配置 (`capacitor.config.json`)
+
+```json
+{
+  "appId": "com.osumusic.app",
+  "appName": "OSU! Music",
+  "webDir": "dist/spa",
+  "ios": {
+    "scheme": "OSU Music",
+    "contentInset": "automatic"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
+```
+
+## iOS 特性
+
+### Files App 集成
+
+在 iOS 设备上，应用会自动在 Documents 目录下创建 `OSU-Music` 文件夹，用户可以通过 Files app 直接访问：
+
+```
+Documents/
+  └── OSU-Music/
+      ├── Music/      # 音频文件
+      ├── Playlists/  # 播放列表
+      ├── Cache/      # 缓存文件
+      └── Covers/     # 封面图片
+```
+
+### iPad 支持
+
+- ✅ 响应式 UI 适配不同窗口比例
+- ✅ 支持分屏和滑动覆盖模式
+- ✅ 键盘快捷键支持
+
+## Android 特性
+
+### 文件权限
+
+应用会自动请求必要的文件访问权限：
+
+- 读取外部存储
+- 写入外部存储
+- 音频播放权限
+
+### 后台播放
+
+支持 Android 后台音频播放：
+
+- 媒体会话控制
+- 通知栏播放控制
+- 锁屏播放控制
+
+## 开发最佳实践
+
+### 1. 使用平台抽象
+
+❌ **错误**：直接调用平台特定 API
+
+```typescript
+// 不要这样做
+if (window.electron) {
+  window.electron.ipcRenderer.invoke('read-file', path);
+} else {
+  Filesystem.readFile({ path });
+}
+```
+
+✅ **正确**：使用统一接口
+
+```typescript
+// 这样做
+const platform = getPlatformService();
+await platform.readFile({ path, encoding: 'utf8' });
+```
+
+### 2. 错误处理
+
+```typescript
+try {
+  const data = await platform.readFile({ path: 'config.json' });
+  return JSON.parse(data);
+} catch (error) {
+  console.error('Failed to read config:', error);
+  // 提供默认配置或降级处理
+  return getDefaultConfig();
+}
+```
+
+### 3. 平台特定功能
+
+```typescript
+const platform = getPlatformService();
+const info = platform.getPlatformInfo();
+
+if (info.type === 'ios') {
+  // iOS 特定逻辑
+  await platform.setStatusBarStyle?.('light');
+} else if (info.type === 'android') {
+  // Android 特定逻辑
+}
+```
+
+## 故障排除
+
+### 常见问题
+
+1. **Capacitor 构建失败**
+
+   - 确保已安装 Xcode (iOS) 或 Android Studio (Android)
+   - 运行 `npm run cap:sync` 同步代码
+
+2. **文件访问权限问题**
+
+   - iOS：检查 Info.plist 文件权限配置
+   - Android：检查 AndroidManifest.xml 权限声明
+
+3. **音频播放问题**
+   - 确保音频文件格式支持
+   - 检查平台特定的音频权限
+
+### 调试技巧
+
+1. **启用平台日志**
+
+```typescript
+const platform = getPlatformService();
+console.log('Platform info:', platform.getPlatformInfo());
+```
+
+2. **使用开发者工具**
+
+```bash
+# iOS
+npm run cap:open:ios
+
+# Android
+npm run cap:open:android
+```
+
+## 更多资源
+
+- [Quasar Framework](https://quasar.dev/)
+- [Capacitor Documentation](https://capacitorjs.com/)
+- [Electron Documentation](https://www.electronjs.org/)
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request 来改进跨平台支持！
+
 - **播放列表目录**: `%USERPROFILE%\Music\osu-music\playlists\`
 - **路径分隔符**: `\` (反斜杠)
 - **特殊处理**:

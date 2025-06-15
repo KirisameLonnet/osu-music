@@ -12,7 +12,7 @@ export default configure((ctx) => {
     // app boot file (/src/boot)
     // --> boot files are part of "main.js"
     // https://v2.quasar.dev/quasar-cli-vite/boot-files
-    boot: ['i18n', 'axios'],
+    boot: ['i18n', 'axios', 'auth', 'deeplink'],
 
     // https://v2.quasar.dev/quasar-cli-vite/quasar-config-file#css
     css: ['app.scss'],
@@ -210,12 +210,12 @@ export default configure((ctx) => {
         // https://github.com/electron-userland/electron-packager/blob/master/docs/api.md#options
 
         // 应用基本信息
-        name: 'OSU! Music',
-        appVersion: '0.1.0',
+        name: 'osu-music',
+        appVersion: '0.0.1',
 
-        // 明确指定架构 - 支持多架构
-        arch: process.env.ELECTRON_BUILDER_ARCH || (process.platform === 'darwin' ? 'all' : 'x64'),
-        platform: process.env.ELECTRON_PLATFORM || process.platform,
+        // 明确指定架构 - 针对 Windows AMD64
+        arch: 'x64', // 强制使用 x64 架构 (AMD64)
+        platform: 'win32', // 针对 Windows 平台
 
         // 图标配置
         icon: 'src-electron/icons/icon', // 不需要扩展名，packager会自动选择
@@ -262,10 +262,10 @@ export default configure((ctx) => {
         appId: 'com.osu-music.app',
 
         // 产品名称
-        productName: 'OSU! Music',
+        productName: 'osu-music',
 
         // 版权信息
-        copyright: 'Copyright © 2024 OSU! Music',
+        copyright: 'Copyright © 2024 osu-music',
 
         // 目录配置
         directories: {
@@ -282,13 +282,9 @@ export default configure((ctx) => {
           target: [
             {
               target: 'dmg',
-              arch: ['universal'], // 创建universal构建，支持Intel和Apple Silicon
+              arch: ['x64', 'arm64'],
             },
           ],
-          hardenedRuntime: true,
-          gatekeeperAssess: false,
-          entitlements: 'build/entitlements.mac.plist',
-          entitlementsInherit: 'build/entitlements.mac.plist',
         },
 
         // Windows 配置

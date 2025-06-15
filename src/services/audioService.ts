@@ -1,3 +1,5 @@
+import { getPlatformService } from './platform';
+import type { PlatformService } from './platform/types';
 import type { MusicTrack } from 'src/stores/musicStore';
 
 // IPC 响应类型定义
@@ -23,10 +25,10 @@ export class AudioService {
   private audio: HTMLAudioElement | null = null;
   private eventListeners: Partial<AudioServiceEvents> = {};
   private currentTrack: MusicTrack | null = null;
-  private isElectron = false;
+  private platform: PlatformService;
 
   constructor() {
-    this.isElectron = !!window.electron?.ipcRenderer;
+    this.platform = getPlatformService();
   }
 
   // 注册事件监听器
@@ -62,8 +64,10 @@ export class AudioService {
       this.audio = new Audio();
       this.setupAudioEventListeners();
 
+      const platformInfo = this.platform.getPlatformInfo();
+
       // 在 Electron 环境中，通过 IPC 获取音频 blob URL
-      if (this.isElectron && track.filePath) {
+      if (platformInfo.type === 'electron' && track.filePath) {
         console.log(`[AudioService] Requesting audio blob URL for: ${track.filePath}`);
 
         try {
@@ -83,9 +87,31 @@ export class AudioService {
           this.emit('error', error as Error);
           return;
         }
+      } else if (platformInfo.isMobile && track.filePath) {
+        // 移动端：尝试从文件系统读取
+        try {
+          const fileData = await this.platform.readFile({
+            path: track.filePath,
+            encoding: 'base64',
+          });
+
+          // 创建blob URL
+          const binaryString = atob(fileData);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          const blob = new Blob([bytes], { type: 'audio/mpeg' });
+          const blobUrl = URL.createObjectURL(blob);
+          this.audio.src = blobUrl;
+        } catch (error) {
+          console.error('[AudioService] Error reading audio file:', error);
+          this.emit('error', error as Error);
+          return;
+        }
       } else {
         // 在浏览器环境中，可能需要通过服务器提供音频文件
-        // 这里暂时使用占位符，实际项目中需要配置音频文件服务
         console.warn('Browser environment: Audio files need to be served through a web server');
         this.audio.src = `/music/${track.fileName}`;
       }

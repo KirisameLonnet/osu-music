@@ -1,9 +1,7 @@
 // src/stores/auth.ts
 import { defineStore } from 'pinia';
 import { refreshToken as refreshOsuTokenService } from 'src/services/osuAuthService'; // 导入刷新服务
-import { Capacitor } from '@capacitor/core';
-import type { HttpResponse } from '@capacitor/http';
-import { Http } from '@capacitor/http';
+import { getPlatformService } from './platform'; // 导入平台抽象层
 
 // 定义用户信息的接口
 export interface OsuUserProfile {
@@ -26,14 +24,39 @@ interface AuthState {
 
 // 定义 IPC 返回结果类型
 
+// 创建平台服务实例
+const platform = getPlatformService();
+
+// 异步加载存储的认证数据
+async function loadStoredAuthData(): Promise<Partial<AuthState>> {
+  try {
+    const [accessToken, refreshToken, expiresAt, userProfile] = await Promise.all([
+      platform.getStorage('osu_access_token'),
+      platform.getStorage('osu_refresh_token'),
+      platform.getStorage('osu_expires_at'),
+      platform.getStorage('osu_user_profile'),
+    ]);
+
+    return {
+      accessToken: accessToken || null,
+      refreshToken: refreshToken || null,
+      expiresAt: expiresAt ? parseInt(expiresAt, 10) : null,
+      user: userProfile ? JSON.parse(userProfile) : null,
+    };
+  } catch (error) {
+    console.error('[AuthStore] Failed to load stored auth data:', error);
+    return {};
+  }
+}
+
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
-    accessToken: localStorage.getItem('osu_access_token') || null,
-    refreshToken: localStorage.getItem('osu_refresh_token') || null,
-    expiresAt: parseInt(localStorage.getItem('osu_expires_at') || '0', 10) || null,
-    user: JSON.parse(localStorage.getItem('osu_user_profile') || 'null'),
+    accessToken: null, // 将通过 initializeFromStorage 异步加载
+    refreshToken: null,
+    expiresAt: null,
+    user: null,
     isLoading: false,
-    pendingOAuthCode: null, // 新增
+    pendingOAuthCode: null,
   }),
 
   getters: {
@@ -44,18 +67,40 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
-    setTokens(accessToken: string, refreshToken: string | null, expiresIn: number) {
+    // 初始化认证数据（从跨平台存储加载）
+    async initializeFromStorage() {
+      try {
+        const storedData = await loadStoredAuthData();
+        this.accessToken = storedData.accessToken || null;
+        this.refreshToken = storedData.refreshToken || null;
+        this.expiresAt = storedData.expiresAt || null;
+        this.user = storedData.user || null;
+        console.log('[AuthStore] Initialized from platform storage');
+      } catch (error) {
+        console.error('[AuthStore] Failed to initialize from storage:', error);
+      }
+    },
+
+    async setTokens(accessToken: string, refreshToken: string | null, expiresIn: number) {
       this.accessToken = accessToken;
       this.expiresAt = Date.now() + (expiresIn - 300) * 1000; // 提前 5 分钟视为过期，以便刷新
 
       if (refreshToken) {
         // Osu! 可能在每次刷新时不一定返回新的 refresh token
         this.refreshToken = refreshToken;
-        localStorage.setItem('osu_refresh_token', refreshToken);
       }
 
-      localStorage.setItem('osu_access_token', accessToken);
-      localStorage.setItem('osu_expires_at', this.expiresAt.toString());
+      // 使用平台抽象层保存到存储
+      try {
+        await Promise.all([
+          platform.setStorage('osu_access_token', accessToken),
+          platform.setStorage('osu_expires_at', this.expiresAt.toString()),
+          refreshToken ? platform.setStorage('osu_refresh_token', refreshToken) : Promise.resolve(),
+        ]);
+        console.log('[AuthStore] Tokens saved to platform storage');
+      } catch (error) {
+        console.error('[AuthStore] Failed to save tokens to storage:', error);
+      }
 
       // 在设置 token 后立即获取用户信息
       void this.fetchUserProfile();
@@ -82,95 +127,34 @@ export const useAuthStore = defineStore('auth', {
         console.warn('[AuthStore] Cannot fetch user profile without an access token.');
         throw new Error('No access token available for fetching user profile.');
       }
-      const OSU_API_ME_URL = 'https://osu.ppy.sh/api/v2/me';
+
       this.isLoading = true;
       try {
-        if (Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
-          // === CAPACITOR iOS/Android using @capacitor/http ===
-          console.log(
-            '[AuthStore Capacitor] Attempting to fetch user profile via @capacitor/http with token:',
-            this.accessToken,
-          );
-          const options = {
-            url: OSU_API_ME_URL,
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${this.accessToken}`,
-              Accept: 'application/json',
-            },
-          };
-          const response: HttpResponse = await Http.request(options);
-          console.log('[AuthStore Capacitor] User profile response status:', response.status);
-          console.log('[AuthStore Capacitor] User profile response data:', response.data);
-          if (response.status >= 200 && response.status < 300 && response.data) {
-            this.user = response.data as OsuUserProfile;
-            localStorage.setItem('osu_user_profile', JSON.stringify(this.user));
-          } else {
-            console.error(
-              '[AuthStore Capacitor] Failed to fetch user profile. Status:',
-              response.status,
-            );
-            if (response.status === 401) {
-              const refreshed = await this.tryRefreshToken();
-              if (refreshed) {
-                await this.fetchUserProfile();
-                if (!this.user)
-                  throw new Error('Failed to fetch profile after refresh (Capacitor)');
-              } else {
-                this.logout();
-                throw new Error('Token refresh failed (Capacitor).');
-              }
-            } else {
-              throw new Error(
-                response.data?.message || `Failed to fetch profile. Status: ${response.status}`,
-              );
-            }
-          }
-        } else if (window.electron?.ipcRenderer) {
-          // === ELECTRON ===
-          const result = await window.electron.ipcRenderer.invoke(
-            'fetch-osu-user-profile',
-            this.accessToken,
-          );
-          const r = result as {
-            success?: boolean;
-            data?: OsuUserProfile;
-            status?: number;
-            error?: string;
-          };
-          if (r && r.success && r.data) {
-            this.user = r.data;
-            localStorage.setItem('osu_user_profile', JSON.stringify(this.user));
-          } else {
-            if (r && r.status === 401) {
-              const refreshed = await this.tryRefreshToken();
-              if (refreshed) {
-                const newResult = await window.electron?.ipcRenderer?.invoke(
-                  'fetch-osu-user-profile',
-                  this.accessToken,
-                );
-                const nr = newResult as {
-                  success?: boolean;
-                  data?: OsuUserProfile;
-                  status?: number;
-                  error?: string;
-                };
-                if (nr && nr.success && nr.data) {
-                  this.user = nr.data;
-                  localStorage.setItem('osu_user_profile', JSON.stringify(this.user));
-                } else {
-                  throw new Error(nr?.error || 'Failed to fetch profile after refresh');
-                }
-              } else {
-                this.logout();
-                throw new Error('Token refresh failed.');
-              }
-            } else {
-              throw new Error(r?.error || 'Failed to fetch user profile.');
-            }
-          }
+        // 使用平台抽象层获取用户配置文件
+        const result = await platform.fetchUserProfile<OsuUserProfile>(this.accessToken);
+
+        if (result.success && result.data) {
+          this.user = result.data;
+          // 使用平台抽象层保存用户配置文件
+          await platform.setStorage('osu_user_profile', JSON.stringify(this.user));
         } else {
-          throw new Error('Platform not supported for fetching user profile.');
+          if (result.status === 401) {
+            const refreshed = await this.tryRefreshToken();
+            if (refreshed) {
+              const newResult = await platform.fetchUserProfile<OsuUserProfile>(this.accessToken!);
+              if (newResult.success && newResult.data) {
+                this.user = newResult.data;
+                await platform.setStorage('osu_user_profile', JSON.stringify(this.user));
+              } else {
+                throw new Error(newResult.error || 'Failed to fetch profile after refresh');
+              }
+            } else {
+              this.logout();
+              throw new Error('Token refresh failed.');
+            }
+          } else {
+            throw new Error(result.error || 'Failed to fetch user profile.');
+          }
         }
       } catch (error) {
         console.error('[AuthStore] Error fetching user profile:', error);
@@ -196,18 +180,28 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    logout() {
+    async logout() {
       this.accessToken = null;
       this.refreshToken = null;
       this.expiresAt = null;
       this.user = null;
-      localStorage.removeItem('osu_access_token');
-      localStorage.removeItem('osu_refresh_token');
-      localStorage.removeItem('osu_expires_at');
-      localStorage.removeItem('osu_user_profile');
-      sessionStorage.removeItem('osu_code_verifier'); // 也清除这个
-      // 可以在这里添加 router.push('/') 或类似操作
-      console.log('User logged out from Osu! store.');
+
+      // 使用平台抽象层清除存储数据
+      try {
+        await Promise.all([
+          platform.removeStorage('osu_access_token'),
+          platform.removeStorage('osu_refresh_token'),
+          platform.removeStorage('osu_expires_at'),
+          platform.removeStorage('osu_user_profile'),
+        ]);
+        console.log('[AuthStore] User logged out, storage cleared');
+      } catch (error) {
+        console.error('[AuthStore] Failed to clear storage on logout:', error);
+      }
+
+      // 清除 sessionStorage（仍需要直接使用，因为这是临时数据）
+      sessionStorage.removeItem('osu_code_verifier');
+      console.log('[AuthStore] User logged out from Osu! store.');
     },
 
     // 初始化 store，例如在应用启动时调用

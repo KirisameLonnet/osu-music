@@ -24,8 +24,9 @@ yarn.lock
 /src-cordova/www
 
 # Capacitor related directories and files
-/src-capacitor/www
-/src-capacitor/node_modules
+/ios
+/android
+/dist
 
 # Electron distribution
 /dist-electron

@@ -408,7 +408,7 @@ const starChipStyle = (difficultyRating: number): CSSProperties => {
   padding-right: 16px; // 头像和内容间的间距
   .q-avatar img {
     object-fit: cover; // 确保图片填满
-    border-radius: $border-radius-root / 2; // 与 item 圆角协调
+    border-radius: calc($border-radius-root / 2); // 与 item 圆角协调
   }
 }
 

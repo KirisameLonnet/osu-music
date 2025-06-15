@@ -383,7 +383,7 @@ $lazer-transition: all 0.2s ease-out;
   background-color: $lazer-bg-element;
   padding: 12px;
   border-radius: $lazer-radius-element;
-  border: 1px solid darken($lazer-border-color, 2%);
+  border: 1px solid rgba(255, 255, 255, 0.12); // 替代 darken() 函数
 
   .track-thumbnail {
     width: 48px;

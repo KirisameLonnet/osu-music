@@ -7,71 +7,39 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        print("[AppDelegate] didFinishLaunchingWithOptions called with launchOptions: \(String(describing: launchOptions))")
-        // 打印 UserDefaults 里常见的 auth 信息
-        let defaults = UserDefaults.standard
-        let osuAccessToken = defaults.string(forKey: "osu_access_token") ?? "nil"
-        let osuRefreshToken = defaults.string(forKey: "osu_refresh_token") ?? "nil"
-        let osuExpiresAt = defaults.object(forKey: "osu_expires_at") ?? "nil"
-        let osuUserProfile = defaults.string(forKey: "osu_user_profile") ?? "nil"
-        print("[AppDelegate][AuthDebug] osu_access_token: \(osuAccessToken)")
-        print("[AppDelegate][AuthDebug] osu_refresh_token: \(osuRefreshToken)")
-        print("[AppDelegate][AuthDebug] osu_expires_at: \(osuExpiresAt)")
-        print("[AppDelegate][AuthDebug] osu_user_profile: \(osuUserProfile)")
         // Override point for customization after application launch.
         return true
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
-        print("[AppDelegate] applicationWillResignActive called")
-        // 打印当前 UserDefaults 的 auth 信息
-        let defaults = UserDefaults.standard
-        print("[AppDelegate][AuthDebug] (ResignActive) osu_access_token: \(defaults.string(forKey: "osu_access_token") ?? "nil")")
+        // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
+        // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
-        print("[AppDelegate] applicationDidEnterBackground called")
-        let defaults = UserDefaults.standard
-        print("[AppDelegate][AuthDebug] (DidEnterBackground) osu_access_token: \(defaults.string(forKey: "osu_access_token") ?? "nil")")
+        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
+        // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        print("[AppDelegate] applicationWillEnterForeground called")
-        let defaults = UserDefaults.standard
-        print("[AppDelegate][AuthDebug] (WillEnterForeground) osu_access_token: \(defaults.string(forKey: "osu_access_token") ?? "nil")")
+        // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        print("[AppDelegate] applicationDidBecomeActive called")
-        let defaults = UserDefaults.standard
-        print("[AppDelegate][AuthDebug] (DidBecomeActive) osu_access_token: \(defaults.string(forKey: "osu_access_token") ?? "nil")")
+        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        print("[AppDelegate] applicationWillTerminate called")
-        let defaults = UserDefaults.standard
-        print("[AppDelegate][AuthDebug] (WillTerminate) osu_access_token: \(defaults.string(forKey: "osu_access_token") ?? "nil")")
+        // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        print("[AppDelegate] application open URL called with: \(url.absoluteString), options: \(options)")
-        let defaults = UserDefaults.standard
-        print("[AppDelegate][AuthDebug] (OpenURL) osu_access_token: \(defaults.string(forKey: "osu_access_token") ?? "nil")")
-        // 通知 Capacitor JS 层
-        NotificationCenter.default.post(name: .capacitorOpenURL, object: [
-            UIApplication.OpenURLOptionsKey.sourceApplication: options[UIApplication.OpenURLOptionsKey.sourceApplication] as Any,
-            UIApplication.OpenURLOptionsKey.annotation: options[UIApplication.OpenURLOptionsKey.annotation] as Any,
-            "url": url
-        ])
-        // 继续调用 Capacitor 的桥接方法
+        // Called when the app was launched with a url. Feel free to add additional processing here,
+        // but if you want the App API to support tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        print("[AppDelegate] application continue userActivity called with: \(userActivity), restorationHandler: \(restorationHandler)")
-        // 打印 userActivity 相关的 auth 信息
-        let defaults = UserDefaults.standard
-        print("[AppDelegate][AuthDebug] (ContinueUserActivity) osu_access_token: \(defaults.string(forKey: "osu_access_token") ?? "nil")")
         // Called when the app was launched with an activity, including Universal Links.
         // Feel free to add additional processing here, but if you want the App API to support
         // tracking app url opens, make sure to keep this call

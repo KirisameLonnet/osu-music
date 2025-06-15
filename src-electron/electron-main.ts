@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
@@ -349,17 +349,216 @@ void app.whenReady().then(() => {
     }
   });
 
-  // 可选：为其他 electron-store 方法创建 handlers (delete, clear, etc.)
-  // ipcMain.on('settings:delete', (event, key: keyof AppSettings) => {
-  //   appSettingsStore.delete(key);
-  // });
-
-  // IPC handler for opening external URLs
-  ipcMain.on('open-external-url', (event, urlToOpen) => {
-    shell
-      .openExternal(urlToOpen)
-      .catch((err) => console.error('Failed to open external URL:', err));
+  // --- IPC Handlers for Platform Storage ---
+  ipcMain.handle('get-storage', (event, key: string) => {
+    console.log(`[Main IPC] get-storage received - Key: ${key}`);
+    try {
+      const value = appSettingsStore.get(key, null);
+      console.log(`[Main IPC] get-storage returning - Value: ${String(value)}`);
+      return value;
+    } catch (error) {
+      console.error(`[Main IPC] get-storage failed - Key: ${key}, Error:`, error);
+      return null;
+    }
   });
+
+  ipcMain.handle('set-storage', (event, key: string, value: string) => {
+    console.log(`[Main IPC] set-storage received - Key: ${key}, Value: ${value}`);
+    try {
+      appSettingsStore.set(key, value);
+      console.log(`[Main IPC] set-storage - ${key} successfully set to "${value}"`);
+    } catch (error) {
+      console.error(`[Main IPC] set-storage - Error setting ${key}:`, error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('remove-storage', (event, key: string) => {
+    console.log(`[Main IPC] remove-storage received - Key: ${key}`);
+    try {
+      appSettingsStore.delete(key);
+      console.log(`[Main IPC] remove-storage - ${key} successfully removed`);
+    } catch (error) {
+      console.error(`[Main IPC] remove-storage - Error removing ${key}:`, error);
+      throw error;
+    }
+  });
+
+  // --- IPC Handlers for File System ---
+  ipcMain.handle('get-app-data-directory', () => {
+    console.log('[Main IPC] get-app-data-directory received');
+    try {
+      const appDataPath = app.getPath('userData');
+      console.log(`[Main IPC] get-app-data-directory returning: ${appDataPath}`);
+      return appDataPath;
+    } catch (error) {
+      console.error('[Main IPC] get-app-data-directory failed:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-documents-directory', () => {
+    console.log('[Main IPC] get-documents-directory received');
+    try {
+      const documentsPath = app.getPath('documents');
+      console.log(`[Main IPC] get-documents-directory returning: ${documentsPath}`);
+      return documentsPath;
+    } catch (error) {
+      console.error('[Main IPC] get-documents-directory failed:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('read-file', async (event, options: { path: string; encoding?: string }) => {
+    console.log(`[Main IPC] read-file received - Path: ${options.path}`);
+    try {
+      const encoding = options.encoding || 'utf8';
+      const content = await fs.readFile(options.path, { encoding: encoding as BufferEncoding });
+      console.log(`[Main IPC] read-file success - Size: ${content.length} chars`);
+      return content;
+    } catch (error) {
+      console.error(`[Main IPC] read-file failed - Path: ${options.path}, Error:`, error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle(
+    'write-file',
+    async (
+      event,
+      options: { path: string; data: string | Buffer; encoding?: string; recursive?: boolean },
+    ) => {
+      console.log(`[Main IPC] write-file received - Path: ${options.path}`);
+      try {
+        if (options.recursive) {
+          const dir = path.dirname(options.path);
+          await fs.mkdir(dir, { recursive: true });
+        }
+        const encoding = options.encoding || 'utf8';
+        await fs.writeFile(options.path, options.data, { encoding: encoding as BufferEncoding });
+        console.log(`[Main IPC] write-file success - Path: ${options.path}`);
+      } catch (error) {
+        console.error(`[Main IPC] write-file failed - Path: ${options.path}, Error:`, error);
+        throw error;
+      }
+    },
+  );
+
+  ipcMain.handle('delete-file', async (event, filePath: string) => {
+    console.log(`[Main IPC] delete-file received - Path: ${filePath}`);
+    try {
+      await fs.unlink(filePath);
+      console.log(`[Main IPC] delete-file success - Path: ${filePath}`);
+    } catch (error) {
+      console.error(`[Main IPC] delete-file failed - Path: ${filePath}, Error:`, error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('create-directory', async (event, dirPath: string) => {
+    console.log(`[Main IPC] create-directory received - Path: ${dirPath}`);
+    try {
+      await fs.mkdir(dirPath, { recursive: true });
+      console.log(`[Main IPC] create-directory success - Path: ${dirPath}`);
+    } catch (error) {
+      console.error(`[Main IPC] create-directory failed - Path: ${dirPath}, Error:`, error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('list-directory', async (event, dirPath: string) => {
+    console.log(`[Main IPC] list-directory received - Path: ${dirPath}`);
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      const result = await Promise.all(
+        entries.map(async (entry) => {
+          const fullPath = path.join(dirPath, entry.name);
+          const stats = await fs.stat(fullPath);
+          return {
+            name: entry.name,
+            path: fullPath,
+            uri: `file://${fullPath}`,
+            size: stats.size,
+            mtime: stats.mtime.getTime(),
+            type: entry.isDirectory() ? 'directory' : 'file',
+          };
+        }),
+      );
+      console.log(`[Main IPC] list-directory success - Found ${result.length} entries`);
+      return result;
+    } catch (error) {
+      console.error(`[Main IPC] list-directory failed - Path: ${dirPath}, Error:`, error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('file-exists', async (event, filePath: string) => {
+    console.log(`[Main IPC] file-exists received - Path: ${filePath}`);
+    try {
+      await fs.access(filePath);
+      console.log(`[Main IPC] file-exists success - Path exists: ${filePath}`);
+      return true;
+    } catch {
+      console.log(`[Main IPC] file-exists - Path does not exist: ${filePath}`);
+      return false;
+    }
+  });
+
+  ipcMain.handle(
+    'http-request',
+    async (
+      event,
+      request: {
+        url: string;
+        method: string;
+        headers?: Record<string, string>;
+        data?: unknown;
+        params?: Record<string, string>;
+        timeout?: number;
+      },
+    ) => {
+      console.log(`[Main IPC] http-request received - ${request.method} ${request.url}`);
+      try {
+        interface RequestConfig {
+          url: string;
+          method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+          timeout: number;
+          headers?: Record<string, string>;
+          data?: unknown;
+          params?: Record<string, string>;
+        }
+
+        const config: RequestConfig = {
+          url: request.url,
+          method: request.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+          timeout: request.timeout || 30000,
+        };
+
+        if (request.headers) {
+          config.headers = request.headers;
+        }
+        if (request.data) {
+          config.data = request.data;
+        }
+        if (request.params) {
+          config.params = request.params;
+        }
+
+        const response = await axios(config);
+
+        console.log(`[Main IPC] http-request success - Status: ${response.status}`);
+        return {
+          data: response.data,
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers as Record<string, string>,
+        };
+      } catch (error) {
+        console.error(`[Main IPC] http-request failed - ${request.method} ${request.url}:`, error);
+        throw error;
+      }
+    },
+  );
 
   // 处理获取初始全屏状态的请求
   ipcMain.handle('get-initial-fullscreen-state', () => {
@@ -424,6 +623,14 @@ void app.whenReady().then(() => {
   });
   ipcMain.on('close-window', () => {
     mainWindow?.close();
+  });
+
+  // IPC handler for opening external URLs (OAuth)
+  ipcMain.on('open-external-url', (event, url: string) => {
+    console.log('[Main Process] Opening external URL:', url);
+    shell.openExternal(url).catch((error: Error) => {
+      console.error('[Main Process] Failed to open external URL:', error);
+    });
   });
 
   // --- 新增: 处理 Osu! token 交换 ---
@@ -1058,6 +1265,65 @@ void app.whenReady().then(() => {
       console.error('[Main Process] Error deleting music file:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       return { success: false, error: errorMessage };
+    }
+  });
+
+  // --- 新增: 处理OAuth启动请求 ---
+  ipcMain.handle('open-oauth', async (event, config) => {
+    try {
+      console.log('[Main Process] Opening OAuth URL with config:', config);
+
+      // 构建OAuth URL
+      const params = new URLSearchParams({
+        client_id: config.clientId,
+        redirect_uri: config.redirectUri,
+        scope: config.scopes.join(' '),
+        response_type: 'code',
+      });
+
+      const authUrl = `${config.authUrl}?${params.toString()}`;
+      console.log('[Main Process] OAuth URL:', authUrl);
+
+      // 清除之前的pending code
+      pendingAuthCode = null;
+
+      // 使用系统浏览器打开OAuth页面
+      await shell.openExternal(authUrl);
+
+      console.log('[Main Process] OAuth URL opened, waiting for callback...');
+
+      // 等待深链接回调，最多等待60秒
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve({
+            success: false,
+            error: 'OAuth timeout - no callback received within 60 seconds',
+          });
+        }, 60000);
+
+        // 监听深链接回调
+        const checkForCode = () => {
+          if (pendingAuthCode) {
+            clearTimeout(timeout);
+            const code = pendingAuthCode;
+            pendingAuthCode = null;
+            console.log('[Main Process] OAuth callback received, returning code');
+            resolve({ success: true, code });
+          } else {
+            // 每500ms检查一次
+            setTimeout(checkForCode, 500);
+          }
+        };
+
+        // 开始检查
+        checkForCode();
+      });
+    } catch (error) {
+      console.error('[Main Process] Failed to open OAuth URL:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to open OAuth URL',
+      };
     }
   });
 });

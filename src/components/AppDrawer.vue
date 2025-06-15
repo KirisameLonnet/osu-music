@@ -122,6 +122,7 @@ const secondaryNavLinks: NavLink[] = [
 const utilityLinks: NavLink[] = [
   { title: 'Auth Settings', icon: 'account_circle', to: '/auth-settings', name: 'authSettings' },
   { title: 'Resources', icon: 'public', to: '/resources', name: 'resources' },
+  { title: 'Platform Test', icon: 'science', to: '/platform-test', name: 'platformTest' },
 ];
 </script>
 

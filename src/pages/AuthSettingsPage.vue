@@ -93,6 +93,42 @@
             <div class="text-h6">Osu! Account Status</div>
           </q-card-section>
           <q-separator dark />
+
+          <!-- OAuth 诊断信息 -->
+          <q-card-section>
+            <div class="text-subtitle1 q-mb-sm">OAuth 配置诊断:</div>
+            <div class="q-mb-sm"><strong>当前平台:</strong> {{ currentPlatform }}</div>
+            <div class="q-mb-sm"><strong>重定向 URI:</strong> {{ currentRedirectUri }}</div>
+            <div class="q-mb-sm">
+              <strong>Client ID 已配置:</strong> {{ settingsStore.osuClientId ? '是' : '否' }}
+            </div>
+            <div class="q-mb-sm">
+              <strong>Client Secret 已配置:</strong>
+              {{ settingsStore.osuClientSecret ? '是' : '否' }}
+            </div>
+
+            <div class="q-mt-md">
+              <q-btn
+                label="验证 OAuth 配置"
+                color="secondary"
+                icon="verified"
+                @click="validateOAuthConfig"
+                :disable="!settingsStore.osuClientId || !settingsStore.osuClientSecret"
+                class="q-mr-sm"
+                unelevated
+              />
+              <q-btn
+                label="复制诊断信息"
+                color="grey"
+                icon="content_copy"
+                @click="copyDiagnosticInfo"
+                flat
+              />
+            </div>
+
+            <q-separator class="q-my-md" />
+          </q-card-section>
+
           <q-card-section v-if="authStore.isAuthenticated && authStore.user">
             <div class="row items-center q-col-gutter-md">
               <div class="col-auto">
@@ -131,6 +167,29 @@
           </q-card-section>
         </q-card>
       </div>
+
+      <!-- Navigation to General Settings -->
+      <div class="q-mt-xl">
+        <q-card class="settings-card" flat bordered>
+          <q-card-section>
+            <div class="text-h6">Other Settings</div>
+            <div class="text-caption text-grey-6 q-mt-xs">
+              Configure general application preferences.
+            </div>
+          </q-card-section>
+          <q-separator dark />
+          <q-card-section>
+            <q-btn
+              label="Go to General Settings"
+              color="secondary"
+              icon="settings"
+              @click="goToGeneralSettings"
+              class="full-width"
+              unelevated
+            />
+          </q-card-section>
+        </q-card>
+      </div>
     </div>
   </q-page>
 </template>
@@ -141,11 +200,13 @@ import { useQuasar, copyToClipboard } from 'quasar';
 import { useAuthStore } from 'src/services/auth';
 import { useSettingsStore } from 'src/stores/settingsStore';
 import { useRouter } from 'vue-router';
+import { getPlatformService } from 'src/services/platform';
 
 const $q = useQuasar();
 const authStore = useAuthStore();
 const settingsStore = useSettingsStore();
 const router = useRouter();
+const platform = getPlatformService();
 
 const form = ref({
   osuClientId: '',
@@ -162,6 +223,26 @@ onMounted(() => {
   // 从 store 加载已保存的设置到表单
   form.value.osuClientId = settingsStore.osuClientId || '';
   form.value.osuClientSecret = settingsStore.osuClientSecret || '';
+});
+
+// 诊断信息
+const currentPlatform = computed(() => {
+  const info = platform.getPlatformInfo();
+  return info.type;
+});
+
+const currentRedirectUri = computed(() => {
+  const info = platform.getPlatformInfo();
+  switch (info.type) {
+    case 'electron':
+      return 'osu-music-fusion://oauth/callback';
+    case 'ios':
+      return 'osu-music-fusion://oauth/callback';
+    case 'android':
+      return 'osu-music-fusion://oauth/callback';
+    default:
+      return `${window.location.origin}/oauth/callback`;
+  }
 });
 
 function onSaveAuthConfig() {
@@ -205,8 +286,9 @@ async function handleOsuLogin() {
     });
     return;
   }
+
   try {
-    // 只跳转到 callback 页面，由 callback 页面负责发起 OAuth 跳转
+    // 简单地导航到回调页面，让回调页面处理OAuth流程
     await router.push({ name: 'osuCallback' });
   } catch (error) {
     console.error('Failed to navigate to Osu! callback page:', error);
@@ -221,6 +303,85 @@ function handleLogout() {
   authStore.logout();
   $q.notify({ type: 'info', message: 'Successfully logged out from Osu!' });
   router.push('/').catch((err) => console.error('Logout navigation error:', err));
+}
+
+function goToGeneralSettings() {
+  router.push({ name: 'authSettings' }).catch(console.error);
+}
+
+async function validateOAuthConfig() {
+  if (!settingsStore.osuClientId || !settingsStore.osuClientSecret) {
+    $q.notify({
+      type: 'warning',
+      message: '请先配置 Client ID 和 Client Secret',
+    });
+    return;
+  }
+
+  $q.loading.show({ message: '验证 OAuth 配置中...' });
+
+  try {
+    // 验证配置的基本检查
+    const diagnosticInfo = {
+      platform: currentPlatform.value,
+      redirectUri: currentRedirectUri.value,
+      clientIdLength: settingsStore.osuClientId?.length || 0,
+      clientSecretLength: settingsStore.osuClientSecret?.length || 0,
+      hasClientId: !!settingsStore.osuClientId,
+      hasClientSecret: !!settingsStore.osuClientSecret,
+    };
+
+    console.log('[OAuth Validation] 诊断信息:', diagnosticInfo);
+
+    $q.notify({
+      type: 'info',
+      message: `配置验证完成\n平台: ${diagnosticInfo.platform}\n重定向 URI: ${diagnosticInfo.redirectUri}\nClient ID 长度: ${diagnosticInfo.clientIdLength}\nClient Secret 长度: ${diagnosticInfo.clientSecretLength}`,
+      multiLine: true,
+      timeout: 5000,
+    });
+  } catch (error) {
+    console.error('配置验证失败:', error);
+    $q.notify({
+      type: 'negative',
+      message: `配置验证失败: ${error}`,
+    });
+  } finally {
+    $q.loading.hide();
+  }
+}
+
+async function copyDiagnosticInfo() {
+  const diagnosticText = `
+OSU! Music OAuth 诊断信息
+========================
+平台: ${currentPlatform.value}
+重定向 URI: ${currentRedirectUri.value}
+Client ID 已配置: ${settingsStore.osuClientId ? '是' : '否'}
+Client Secret 已配置: ${settingsStore.osuClientSecret ? '是' : '否'}
+Client ID 长度: ${settingsStore.osuClientId?.length || 0}
+Client Secret 长度: ${settingsStore.osuClientSecret?.length || 0}
+
+故障排除提示:
+1. 确保重定向 URI 在 OSU! 开发者控制台中完全匹配
+2. 确保 Client ID 和 Client Secret 正确复制
+3. 确保 OSU! 应用类型设置正确（公共客户端/机密客户端）
+4. 检查 OSU! 应用的作用域权限设置
+  `.trim();
+
+  try {
+    await copyToClipboard(diagnosticText);
+    $q.notify({
+      type: 'positive',
+      message: '诊断信息已复制到剪贴板',
+    });
+  } catch (error) {
+    console.error('复制失败:', error);
+    $q.notify({
+      type: 'negative',
+      message: '复制失败，请手动复制控制台输出',
+    });
+    console.log(diagnosticText);
+  }
 }
 </script>
 

@@ -8,242 +8,133 @@
     </div>
     <q-btn
       v-if="showRetryButton"
-      label="Try Login Again"
+      label="Try Again"
       color="primary"
       icon="refresh"
       @click="retryLogin"
       class="q-mt-lg"
       unelevated
     />
-    <div
-      v-if="!showRetryButton && !authStore.isAuthenticated && !errorMessage"
-      class="text-caption text-grey-7 q-mt-md"
-    >
-      If this takes too long, please check your internet connection or try again later.
-    </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import { useRouter, useRoute } from 'vue-router'; // 移除 useRoute
-import {
-  handleOsuCallback as exchangeCodeForToken,
-  redirectToOsuLogin,
-} from 'src/services/osuAuthService';
+import { ref, onMounted, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { useAuthStore } from 'src/services/auth';
+import { useSettingsStore } from 'src/stores/settingsStore';
 import { useQuasar } from 'quasar';
+import { getPlatformService, CapacitorPlatformService } from 'src/services/platform';
+import { handleOsuCallback } from 'src/services/osuAuthService';
+import { setCapacitorPlatformService } from 'src/boot/deeplink';
 
 const router = useRouter();
 const authStore = useAuthStore();
+const settingsStore = useSettingsStore();
 const $q = useQuasar();
-const route = useRoute();
+const platform = getPlatformService();
 
-const statusMessage = ref<string>('Connecting to Osu!...');
+const statusMessage = ref<string>('Starting OAuth login...');
 const errorMessage = ref<string | null>(null);
 const showRetryButton = ref(false);
-const isLoading = ref(true);
 
 const spinnerColor = computed(() => (errorMessage.value ? 'negative' : 'primary'));
 
-function processAuthentication(authCode: string | undefined): Promise<void> {
-  isLoading.value = true;
-  statusMessage.value = 'Authenticating with Osu!...';
-  errorMessage.value = null;
-  showRetryButton.value = false;
+async function startOAuthFlow() {
+  try {
+    statusMessage.value = 'Checking OAuth configuration...';
 
-  if (!authCode) {
-    errorMessage.value = 'Invalid authorization code received from Osu! via protocol.';
+    // 验证OAuth配置
+    if (!settingsStore.osuClientId || !settingsStore.osuClientSecret) {
+      throw new Error(
+        'OAuth configuration missing. Please configure Client ID and Client Secret in Settings.',
+      );
+    }
+
+    console.log('[OsuCallbackPage] Starting OAuth with settings:', {
+      clientId: settingsStore.osuClientId,
+      clientSecret: settingsStore.osuClientSecret ? '***' : 'missing',
+      redirectUri: 'osu-music-fusion://oauth/callback',
+    });
+
+    statusMessage.value = 'Opening OAuth browser...';
+
+    // 如果是Capacitor平台，注册平台服务实例到深链接处理器
+    if (platform instanceof CapacitorPlatformService) {
+      setCapacitorPlatformService(platform);
+      console.log('[OsuCallbackPage] Registered platform service with deep link handler');
+    }
+
+    const result = await platform.openOAuth({
+      clientId: settingsStore.osuClientId,
+      clientSecret: settingsStore.osuClientSecret,
+      redirectUri: 'osu-music-fusion://oauth/callback',
+      scopes: ['identify', 'public', 'friends.read', 'chat.read'],
+      authUrl: 'https://osu.ppy.sh/oauth/authorize',
+      tokenUrl: 'https://osu.ppy.sh/oauth/token',
+    });
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    if (result.code) {
+      statusMessage.value = 'Processing authorization code...';
+
+      const success = await handleOsuCallback(result.code);
+      if (success) {
+        statusMessage.value = 'Fetching user profile...';
+        await authStore.fetchUserProfile();
+
+        if (authStore.user) {
+          statusMessage.value = 'Login successful!';
+          $q.notify({
+            type: 'positive',
+            message: `Welcome, ${authStore.user.username}!`,
+            icon: 'check_circle',
+          });
+
+          setTimeout(() => {
+            router.replace({ name: 'authSettings' }).catch(console.error);
+          }, 1000);
+        } else {
+          throw new Error('Failed to load user profile');
+        }
+      } else {
+        throw new Error('Failed to exchange authorization code');
+      }
+    }
+  } catch (error) {
+    console.error('[OsuCallbackPage] OAuth error:', error);
+    errorMessage.value = error instanceof Error ? error.message : 'OAuth login failed';
     showRetryButton.value = true;
-    isLoading.value = false;
+    statusMessage.value = 'Login failed';
+
     $q.notify({
       type: 'negative',
       message: errorMessage.value,
-      multiLine: true,
-      timeout: 7000,
       icon: 'error',
     });
-    return Promise.reject(new Error(errorMessage.value));
-  }
-
-  return exchangeCodeForToken(authCode)
-    .then((tokenExchangeSuccess) => {
-      if (tokenExchangeSuccess) {
-        statusMessage.value = 'Fetching your Osu! profile...';
-        return authStore
-          .fetchUserProfile()
-          .then(() => {
-            if (authStore.user) {
-              $q.notify({
-                type: 'positive',
-                message: `Welcome, ${authStore.user.username}! Successfully logged in.`,
-                icon: 'check_circle',
-              });
-              router.replace({ name: 'authSettings' }).catch((err) => {
-                console.error('Navigation error:', err);
-              });
-              return Promise.resolve();
-            } else {
-              throw new Error('User profile could not be loaded after login.');
-            }
-          })
-          .catch((profileError) => {
-            console.error('Error fetching profile after login:', profileError);
-            const message =
-              profileError instanceof Error ? profileError.message : 'Could not load profile.';
-            errorMessage.value = `Logged in, but failed to fetch Osu! profile: ${message}`;
-            $q.notify({
-              type: 'warning',
-              message: errorMessage.value,
-              multiLine: true,
-              timeout: 7000,
-              icon: 'warning',
-            });
-            router.replace({ name: 'authSettings' }).catch((err) => {
-              console.error('Navigation error:', err);
-            });
-            return Promise.resolve();
-          });
-      } else {
-        errorMessage.value =
-          'Authentication failed. Could not exchange authorization code for a token.';
-        showRetryButton.value = true;
-        $q.notify({
-          type: 'negative',
-          message: errorMessage.value,
-          multiLine: true,
-          timeout: 7000,
-          icon: 'error',
-        });
-        return Promise.reject(new Error(errorMessage.value));
-      }
-    })
-    .catch((criticalError) => {
-      console.error('Critical error during authentication process:', criticalError);
-      const message =
-        criticalError instanceof Error ? criticalError.message : 'An unexpected error occurred.';
-      errorMessage.value = `Critical authentication error: ${message}`;
-      showRetryButton.value = true;
-      $q.notify({
-        type: 'negative',
-        message: errorMessage.value,
-        multiLine: true,
-        timeout: 7000,
-        icon: 'error',
-      });
-      return Promise.reject(criticalError instanceof Error ? criticalError : new Error(message));
-    })
-    .finally(() => {
-      isLoading.value = false;
-    });
-}
-
-async function handleAuthenticationFlow() {
-  console.log('[OsuCallbackPage] handleAuthenticationFlow started.');
-  isLoading.value = true;
-  statusMessage.value = 'Initializing authentication...';
-  errorMessage.value = null;
-  showRetryButton.value = false;
-  const authStore = useAuthStore();
-  let codeToProcess = authStore.consumePendingOAuthCode();
-  console.log('[OsuCallbackPage] Code from authStore.consumePendingOAuthCode() IS:', codeToProcess);
-  console.log('[OsuCallbackPage] Type of codeToProcess:', typeof codeToProcess);
-  if (!codeToProcess) {
-    const codeFromQuery = route.query.code as string | undefined;
-    console.log(
-      '[OsuCallbackPage] Store code is null/undefined. Trying route.query.code:',
-      codeFromQuery,
-    );
-    if (codeFromQuery && typeof codeFromQuery === 'string' && codeFromQuery.trim() !== '') {
-      codeToProcess = codeFromQuery;
-      console.log('[OsuCallbackPage] Using code from route query as fallback:', codeToProcess);
-    }
-  }
-  if (codeToProcess && typeof codeToProcess === 'string' && codeToProcess.trim() !== '') {
-    console.log(
-      '[OsuCallbackPage] VALID code found. Calling processAuthentication with:',
-      codeToProcess,
-    );
-    await processAuthentication(codeToProcess);
-    return;
-  }
-  if (!authStore.isAuthenticated) {
-    console.log(
-      '[OsuCallbackPage] NO VALID CODE obtained and not authenticated. Initiating Osu! login.',
-    );
-    statusMessage.value = 'Redirecting to Osu! for login...';
-    try {
-      await redirectToOsuLogin();
-    } catch (e) {
-      console.error('[OsuCallbackPage] Error calling redirectToOsuLogin:', e);
-      errorMessage.value =
-        (e instanceof Error ? e.message : String(e)) || 'Failed to initiate Osu! login.';
-      statusMessage.value = 'Error';
-      showRetryButton.value = true;
-      isLoading.value = false;
-    }
-  } else {
-    console.warn(
-      '[OsuCallbackPage] Authenticated but no code processed. Redirecting to auth settings.',
-    );
-    statusMessage.value = 'Already authenticated or invalid state.';
-    isLoading.value = false;
-    void router.replace({ name: 'authSettings' });
   }
 }
-
-onMounted(async () => {
-  console.log(
-    '[OsuCallbackPage] Component mounted. Current route query:',
-    JSON.stringify(route.query),
-  );
-  await handleAuthenticationFlow();
-  const timeoutId = setTimeout(() => {
-    if (isLoading.value && !authStore.isAuthenticated && !errorMessage.value) {
-      // 可选：超时处理逻辑
-      console.warn('[OsuCallbackPage] Authentication flow timeout.');
-      statusMessage.value = 'Authentication timeout.';
-      errorMessage.value = '登录流程超时，请重试。';
-      showRetryButton.value = true;
-      isLoading.value = false;
-    }
-  }, 30000);
-  onUnmounted(() => {
-    clearTimeout(timeoutId);
-  });
-});
-
-let isProcessingTChange = false;
-watch(
-  () => route.query.t,
-  async (newT, oldT) => {
-    if (newT && newT !== oldT && !isProcessingTChange) {
-      isProcessingTChange = true;
-      console.log('[OsuCallbackPage] Route param t changed, re-initiating authentication flow.');
-      await handleAuthenticationFlow();
-      isProcessingTChange = false;
-    }
-  },
-  { immediate: true },
-);
-
-onUnmounted(() => {
-  // 移除旧的 unlistenOauthCode 调用
-  // if (unlistenOauthCode) {
-  //   unlistenOauthCode();
-  // }
-});
 
 function retryLogin() {
   errorMessage.value = null;
   showRetryButton.value = false;
-  statusMessage.value = 'Retrying login...';
-  isLoading.value = true;
-  router.push({ name: 'authSettings' }).catch((err) => {
-    console.error('Retry navigation error:', err);
-    isLoading.value = false;
-  });
+  router.replace({ name: 'authSettings' }).catch(console.error);
 }
+
+onMounted(() => {
+  // 检查是否已经认证
+  if (authStore.isAuthenticated && authStore.user) {
+    statusMessage.value = 'Already logged in';
+    router.replace({ name: 'authSettings' }).catch(console.error);
+    return;
+  }
+
+  // 启动OAuth流程
+  startOAuthFlow();
+});
 </script>
 
 <style lang="scss" scoped>

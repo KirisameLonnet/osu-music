@@ -286,21 +286,20 @@ const handleDeleteTrack = async () => {
 
 <style lang="scss" scoped>
 .music-card {
-  background: rgba(30, 30, 33, 0.7); // 参考PlaylistCard的更深背景色
-  backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.12); // 与PlaylistCard一致的边框
+  background: #2a2a2e; // 更深的灰色背景，与搜索组件一致
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(196, 201, 212, 0.15); // 使用主文字颜色的透明边框
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.3s ease;
   cursor: pointer;
   height: 300px; // 增加高度确保按钮有足够空间
   min-height: 260px; // 确保最小高度，防止内容被挤压
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); // 与PlaylistCard一致的阴影
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-    background: rgba(35, 35, 40, 0.8); // 参考PlaylistCard的悬停背景色
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    background: #35353a; // 悬停时稍微亮一点的深灰色
     border-color: rgba(255, 105, 180, 0.4); // 悬停时边框高亮
 
     .play-overlay {

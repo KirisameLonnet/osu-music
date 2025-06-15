@@ -616,6 +616,96 @@ export const useMusicStore = defineStore('music', () => {
     return null;
   };
 
+  // 新增: 清理音乐库（移除不存在的文件记录）
+  const cleanupMusicLibrary = async () => {
+    isLoading.value = true;
+    error.value = null;
+
+    try {
+      console.log('[MusicStore] Starting library cleanup...');
+      const validTracks: MusicTrack[] = [];
+
+      for (const track of tracks.value) {
+        // 在实际应用中，这里应该检查文件是否存在
+        // 目前先假设检查逻辑，稍后可以集成platform服务
+        try {
+          // TODO: 集成平台服务的文件存在检查
+          // const exists = await platform.exists(track.filePath);
+
+          // 临时逻辑：检查文件路径是否合理
+          if (track.filePath && track.fileName && track.title) {
+            validTracks.push(track);
+          } else {
+            console.log('[MusicStore] Removing invalid track:', track.title || track.fileName);
+          }
+        } catch (error) {
+          console.warn('[MusicStore] Error checking track:', track.title, error);
+        }
+      }
+
+      tracks.value = validTracks;
+      console.log(`[MusicStore] Cleanup complete. ${validTracks.length} valid tracks remaining.`);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to cleanup library';
+      console.error('[MusicStore] Cleanup failed:', err);
+    } finally {
+      isLoading.value = false;
+    }
+  };
+
+  // 新增: 同步音乐库（扫描文件夹并更新库）
+  const syncMusicLibrary = async () => {
+    isLoading.value = true;
+    error.value = null;
+
+    try {
+      console.log('[MusicStore] Starting library sync...');
+
+      // 先清理现有库
+      await cleanupMusicLibrary();
+
+      // 然后重新扫描
+      await scanMusicFiles();
+
+      console.log('[MusicStore] Library sync completed.');
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to sync library';
+      console.error('[MusicStore] Sync failed:', err);
+    } finally {
+      isLoading.value = false;
+    }
+  };
+
+  // 新增: 重置音乐库
+  const resetMusicLibrary = async () => {
+    isLoading.value = true;
+    error.value = null;
+
+    try {
+      console.log('[MusicStore] Resetting music library...');
+
+      // 停止当前播放
+      await stopTrack();
+
+      // 清空所有数据
+      tracks.value = [];
+      currentTrack.value = null;
+      currentPlaylist.value = null;
+      playQueue.value = [];
+      originalQueue.value = [];
+      currentQueueIndex.value = 0;
+      currentTime.value = 0;
+      duration.value = 0;
+
+      console.log('[MusicStore] Music library reset completed.');
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to reset library';
+      console.error('[MusicStore] Reset failed:', err);
+    } finally {
+      isLoading.value = false;
+    }
+  };
+
   return {
     // 状态
     tracks,
@@ -666,6 +756,9 @@ export const useMusicStore = defineStore('music', () => {
     addTracks,
     removeTrack,
     deleteTrackFile,
+    cleanupMusicLibrary,
+    syncMusicLibrary,
+    resetMusicLibrary,
   };
 });
 

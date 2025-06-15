@@ -118,7 +118,7 @@
       <template v-if="authStore.isAuthenticated && authStore.user">
         <q-btn
           :to="{ name: 'authSettings' }"
-          label="Account Settings"
+          label="Account & Settings"
           color="primary"
           rounded
           icon="manage_accounts"
@@ -144,7 +144,16 @@
           unelevated
           rounded
           icon="account_circle"
-          class="q-px-xl q-py-sm main-cta"
+          class="q-px-xl q-py-sm q-mr-md main-cta"
+        />
+        <q-btn
+          :to="{ name: 'authSettings' }"
+          label="General Settings"
+          color="grey-7"
+          outline
+          rounded
+          icon="settings"
+          class="q-px-lg"
         />
       </template>
     </section>

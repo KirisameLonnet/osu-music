@@ -65,6 +65,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/AuthSettingsPage.vue'), // 认证设置页面
         meta: { title: 'Authentication Settings', icon: 'account_circle' },
       },
+      // 平台测试页面
+      {
+        path: 'platform-test', // 访问 '/platform-test'
+        name: 'platformTest',
+        component: () => import('pages/PlatformTestPage.vue'),
+        meta: { title: 'Platform Test', icon: 'science' },
+      },
       {
         path: 'oauth/callback', // Osu! 回调路由
         name: 'osuCallback', // 路由名称
