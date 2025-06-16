@@ -28,26 +28,54 @@ export class MusicService {
 
   private async initializeDirectories(): Promise<void> {
     try {
-      // 获取文档目录（对于iOS，这将是Documents目录）
-      const documentsDir = await this.platform.getDocumentsDirectory();
-
       // 获取平台信息
       const platformInfo = this.platform.getPlatformInfo();
+      console.log('[MusicService] Platform info:', platformInfo);
 
       if (platformInfo.type === 'ios') {
-        // iOS上，音频文件直接放在Documents根目录，只有playlists需要子目录
-        this.musicDirectory = ''; // 空字符串表示Documents根目录
-        this.playlistsDirectory = 'playlists';
-      } else {
-        // 其他平台使用Music子目录
-        this.musicDirectory = `${documentsDir}/Music`;
-        this.playlistsDirectory = `${documentsDir}/Playlists`;
-      }
+        // iOS上，使用Documents目录
+        const documentsDir = await this.platform.getDocumentsDirectory();
+        console.log('[MusicService] iOS Documents directory:', documentsDir);
 
-      // 确保playlists目录存在（音频文件目录在iOS上就是根目录，不需要创建）
-      if (platformInfo.type === 'ios') {
+        // iOS上，音频文件直接放在Documents根目录下的osu-music文件夹
+        this.musicDirectory = `${documentsDir}/osu-music`;
+        this.playlistsDirectory = `${documentsDir}/osu-music/playlists`;
+
+        // 创建目录
+        await this.platform.createDirectory(this.musicDirectory);
         await this.platform.createDirectory(this.playlistsDirectory);
+      } else if (platformInfo.type === 'electron') {
+        // Electron (macOS/Linux/Windows) 使用用户Music目录
+        if (this.platform.getMusicDirectory) {
+          const musicDir = await this.platform.getMusicDirectory();
+          console.log('[MusicService] Electron Music directory:', musicDir);
+
+          this.musicDirectory = musicDir;
+          this.playlistsDirectory = `${musicDir}/playlists`;
+
+          // 创建音乐和播放列表目录
+          await this.platform.createDirectory(this.musicDirectory);
+          await this.platform.createDirectory(this.playlistsDirectory);
+        } else {
+          // 降级方案：使用Documents目录
+          const documentsDir = await this.platform.getDocumentsDirectory();
+          console.log('[MusicService] Electron fallback to Documents directory:', documentsDir);
+
+          this.musicDirectory = `${documentsDir}/osu-music`;
+          this.playlistsDirectory = `${documentsDir}/osu-music/playlists`;
+
+          await this.platform.createDirectory(this.musicDirectory);
+          await this.platform.createDirectory(this.playlistsDirectory);
+        }
       } else {
+        // Android 或其他平台，使用Documents目录
+        const documentsDir = await this.platform.getDocumentsDirectory();
+        console.log('[MusicService] Documents directory:', documentsDir);
+
+        this.musicDirectory = `${documentsDir}/osu-music`;
+        this.playlistsDirectory = `${documentsDir}/osu-music/playlists`;
+
+        // 创建音乐和播放列表目录
         await this.platform.createDirectory(this.musicDirectory);
         await this.platform.createDirectory(this.playlistsDirectory);
       }

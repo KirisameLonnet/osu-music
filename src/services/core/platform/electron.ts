@@ -156,6 +156,20 @@ export class ElectronPlatformService implements PlatformService {
     }
   }
 
+  async getMusicDirectory(): Promise<string> {
+    if (!window.electron?.ipcRenderer) {
+      throw new Error('Electron IPC not available');
+    }
+
+    try {
+      const result = await window.electron.ipcRenderer.invoke('get-music-directory');
+      return result as string;
+    } catch (error) {
+      console.error('[ElectronPlatform] Get music directory failed:', error);
+      throw error;
+    }
+  }
+
   async getStorage(key: string): Promise<string | null> {
     if (!window.electron?.ipcRenderer) {
       // 降级到localStorage

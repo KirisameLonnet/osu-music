@@ -409,6 +409,18 @@ void app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('get-music-directory', () => {
+    console.log('[Main IPC] get-music-directory received');
+    try {
+      const musicPath = getMusicStoragePath();
+      console.log(`[Main IPC] get-music-directory returning: ${musicPath}`);
+      return musicPath;
+    } catch (error) {
+      console.error('[Main IPC] get-music-directory failed:', error);
+      throw error;
+    }
+  });
+
   ipcMain.handle('read-file', async (event, options: { path: string; encoding?: string }) => {
     console.log(`[Main IPC] read-file received - Path: ${options.path}`);
     try {

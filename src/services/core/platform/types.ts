@@ -145,6 +145,7 @@ export interface PlatformService {
   exists(path: string): Promise<boolean>;
   getAppDataDirectory(): Promise<string>;
   getDocumentsDirectory(): Promise<string>;
+  getMusicDirectory?(): Promise<string>; // 可选方法，只有部分平台支持
 
   // 本地存储
   getStorage(key: string): Promise<string | null>;
