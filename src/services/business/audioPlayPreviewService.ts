@@ -1,6 +1,6 @@
 import { ref } from 'vue';
-import { api as osuApi } from 'boot/axios';
-import { useAuthStore } from './auth';
+import { osuHttpService } from '../api/httpService';
+import { useAuthStore } from 'src/stores/authStore';
 
 interface PreviewAudio {
   url: string;
@@ -62,7 +62,9 @@ class AudioService {
         throw new Error('No access token available');
       }
 
-      const response = await osuApi.get(`/beatmapsets/${beatmapsetId}`, {
+      const response = await osuHttpService.get<{
+        preview_url?: string;
+      }>(`/beatmapsets/${beatmapsetId}`, {
         headers: {
           Authorization: `Bearer ${authStore.accessToken}`,
         },

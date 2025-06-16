@@ -122,7 +122,7 @@
           color="primary"
           rounded
           icon="manage_accounts"
-          class="q-px-lg q-mr-md"
+          class="q-px-lg"
           unelevated
         />
         <q-btn
@@ -144,7 +144,7 @@
           unelevated
           rounded
           icon="account_circle"
-          class="q-px-xl q-py-sm q-mr-md main-cta"
+          class="q-px-xl q-py-sm main-cta"
         />
         <q-btn
           :to="{ name: 'authSettings' }"
@@ -162,7 +162,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useAuthStore } from 'src/services/auth';
+import { useAuthStore } from 'src/stores/authStore';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 
@@ -319,41 +319,22 @@ function handleExploreByTagsClick() {
   justify-content: center;
   align-items: center;
   flex-wrap: wrap;
-  gap: calc(0); // 桌面端 gap 由按钮自身 margin 控制
+  gap: 16px; // 统一使用 gap 来控制按钮间距，确保居中
 
   // 移动端竖直排列并加间距
   @media (max-width: 600px) {
     flex-direction: column;
+    gap: 16px; // 移动端也使用 gap
 
     .q-btn {
       width: auto;
       max-width: auto;
-      margin-left: 30px;
-      margin-right: 30px;
-      margin-bottom: 16px;
-
-      &:last-child {
-        margin-bottom: 0;
-      }
+      margin: 0; // 清除所有按钮自身的 margin
     }
   }
 }
 
-@media (max-width: 600px), (orientation: portrait) {
-  .cta-buttons {
-    flex-direction: column;
-    align-items: stretch;
-
-    .q-btn {
-      margin-bottom: calc(16px);
-      margin-right: calc(0) !important;
-    }
-
-    .q-btn:last-child {
-      margin-bottom: calc(0);
-    }
-  }
-}
+// 移动端样式已在上面的 .cta-buttons 中统一处理
 
 // 动画定义
 @keyframes fadeInDown {

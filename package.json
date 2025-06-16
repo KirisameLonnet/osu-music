@@ -10,6 +10,8 @@
     "lint": "eslint -c ./eslint.config.js \"./src*/**/*.{ts,js,cjs,mjs,vue}\"",
     "format": "prettier --write \"**/*.{js,ts,vue,scss,html,md,json}\" --ignore-path .gitignore",
     "test": "echo \"No test specified\" && exit 0",
+    "type-check": "vue-tsc --noEmit",
+    "type-check:watch": "vue-tsc --noEmit --watch",
     "dev": "quasar dev",
     "dev:electron": "quasar dev -m electron",
     "dev:electron:win": "node scripts/debug-windows.js",
@@ -36,6 +38,7 @@
     "postinstall": "quasar prepare"
   },
   "dependencies": {
+    "@capacitor-community/safe-area": "^7.0.0-alpha.1",
     "@capacitor/android": "^7.3.0",
     "@capacitor/app": "^7.0.1",
     "@capacitor/browser": "^7.0.1",

@@ -63,7 +63,7 @@
 <script setup lang="ts">
 import { onMounted, watch, computed, ref } from 'vue';
 import { usePlayHistoryStore } from 'src/stores/playHistory';
-import { useAuthStore } from 'src/services/auth';
+import { useAuthStore } from 'src/stores/authStore';
 import ScoreListItem from 'src/components/ScoreListItem.vue';
 
 const playHistoryStore = usePlayHistoryStore();

@@ -1,7 +1,7 @@
-// src/services/osuAuthService.ts
-import { useAuthStore } from './auth';
+// src/services/api/osuAuthService.ts
+import { useAuthStore } from 'src/stores/authStore';
 import { useSettingsStore } from 'stores/settingsStore';
-import { getPlatformService } from './platform';
+import { getPlatformService } from '../core/platform';
 
 // OAuth 配置常量
 const OSU_AUTHORIZE_URL = 'https://osu.ppy.sh/oauth/authorize';

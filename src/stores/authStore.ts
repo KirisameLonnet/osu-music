@@ -1,7 +1,7 @@
 // src/stores/auth.ts
 import { defineStore } from 'pinia';
-import { refreshToken as refreshOsuTokenService } from 'src/services/osuAuthService'; // 导入刷新服务
-import { getPlatformService } from './platform'; // 导入平台抽象层
+import { refreshToken as refreshOsuTokenService } from 'src/services/api/osuAuthService'; // 导入刷新服务
+import { getPlatformService } from 'src/services/core/platform'; // 导入平台抽象层
 
 // 定义用户信息的接口
 export interface OsuUserProfile {

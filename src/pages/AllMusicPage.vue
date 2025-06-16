@@ -744,17 +744,32 @@ const formatDuration = (seconds?: number): string => {
 
 // 智能封面 URL 生成 - 与 MusicCard.vue 保持一致
 const getSmartCoverUrl = (track: MusicTrack): string => {
+  console.log('[AllMusicPage] Generating cover URL for track:', {
+    title: track.title,
+    id: track.id,
+    album: track.album,
+    coverUrl: track.coverUrl,
+  });
+
   // 如果有 coverUrl，直接使用
   if (track.coverUrl) {
+    console.log('[AllMusicPage] Using existing coverUrl:', track.coverUrl);
     return track.coverUrl;
   }
 
-  // 尝试从 beatmapset ID 生成封面 URL
-  if (track.id && track.id !== 'unknown') {
-    return `https://assets.ppy.sh/beatmaps/${track.id}/covers/card.jpg`;
+  // 尝试从 album 字段中提取 beatmap ID（格式："osu! Beatmap #123456"）
+  if (track.album && track.album.includes('osu! Beatmap #')) {
+    const beatmapIdMatch = track.album.match(/osu! Beatmap #(\d+)/);
+    if (beatmapIdMatch && beatmapIdMatch[1]) {
+      const beatmapId = beatmapIdMatch[1];
+      const coverUrl = `https://assets.ppy.sh/beatmaps/${beatmapId}/covers/card.jpg`;
+      console.log('[AllMusicPage] Generated cover URL from album:', coverUrl);
+      return coverUrl;
+    }
   }
 
   // 使用 osu! 默认封面
+  console.log('[AllMusicPage] Using default cover for track:', track.title);
   return 'https://osu.ppy.sh/images/layout/beatmaps/default-bg.png';
 };
 
@@ -768,32 +783,53 @@ const onCoverImageError = (event: Event) => {
   const trackTitle = img.alt;
   const track = filteredTracks.value.find((t) => t.title === trackTitle);
 
+  console.log('[AllMusicPage] Image error for track:', trackTitle, 'currentSrc:', currentSrc);
+
   if (!track) {
     // 如果找不到对应 track，直接使用默认封面
     if (currentSrc !== defaultCover) {
+      console.log('[AllMusicPage] Track not found, using default cover');
       img.src = defaultCover;
     }
     return;
   }
 
-  // 如果当前不是默认封面且还没尝试过其他尺寸
-  if (currentSrc !== defaultCover && track.id && track.id !== 'unknown') {
+  // 尝试从 album 字段中提取 beatmap ID
+  let beatmapId: string | null = null;
+  if (track.album && track.album.includes('osu! Beatmap #')) {
+    const beatmapIdMatch = track.album.match(/osu! Beatmap #(\d+)/);
+    if (beatmapIdMatch && beatmapIdMatch[1]) {
+      beatmapId = beatmapIdMatch[1];
+    }
+  }
+
+  // 如果当前不是默认封面且有 beatmap ID
+  if (currentSrc !== defaultCover && beatmapId) {
     // 尝试其他封面尺寸
     if (currentSrc.includes('/card.jpg')) {
       // 尝试 list 尺寸
-      const listUrl = `https://assets.ppy.sh/beatmaps/${track.id}/covers/list.jpg`;
+      const listUrl = `https://assets.ppy.sh/beatmaps/${beatmapId}/covers/list.jpg`;
+      console.log('[AllMusicPage] Trying list cover:', listUrl);
       img.src = listUrl;
       return;
     } else if (currentSrc.includes('/list.jpg')) {
       // 尝试 cover 尺寸
-      const coverUrl = `https://assets.ppy.sh/beatmaps/${track.id}/covers/cover.jpg`;
+      const coverUrl = `https://assets.ppy.sh/beatmaps/${beatmapId}/covers/cover.jpg`;
+      console.log('[AllMusicPage] Trying cover size:', coverUrl);
       img.src = coverUrl;
+      return;
+    } else if (currentSrc.includes('/cover.jpg')) {
+      // 尝试 slimcover 尺寸
+      const slimcoverUrl = `https://assets.ppy.sh/beatmaps/${beatmapId}/covers/slimcover.jpg`;
+      console.log('[AllMusicPage] Trying slimcover:', slimcoverUrl);
+      img.src = slimcoverUrl;
       return;
     }
   }
 
   // 最后使用默认封面
   if (currentSrc !== defaultCover) {
+    console.log('[AllMusicPage] Using default cover for:', trackTitle);
     img.src = defaultCover;
   }
 };

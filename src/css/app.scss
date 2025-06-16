@@ -38,27 +38,160 @@
   scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1) !important;
 }
 
-// 尝试添加一些全局的科技感元素
+// 全局基础样式
 html,
 body {
-  height: 100%;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  /* 移除 overflow: hidden 和 position: fixed，允许页面滚动 */
+  height: 100% !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background-color: #121218 !important; // 确保背景色一致
+  overflow-x: hidden; // 防止水平滚动
+}
+
+// Edge-to-Edge 模式支持 - 注释掉以避免与背景 edge-to-edge 冲突
+/*
+@supports (padding: max(0px)) {
+  body {
+    // 确保内容可以延伸到安全区域
+    padding-top: constant(safe-area-inset-top);
+    padding-bottom: constant(safe-area-inset-bottom);
+    padding-left: constant(safe-area-inset-left);
+    padding-right: constant(safe-area-inset-right);
+
+    // iOS 11.2+ 支持
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+*/
+
+// 移动端 Edge-to-Edge 模式样式
+@media screen and (max-width: 768px) {
+  html,
+  body {
+    // 确保占满整个屏幕
+    height: 100vh !important;
+    height: 100dvh !important; // 动态视口高度
+    width: 100vw !important;
+
+    // 移除任何默认的 padding/margin
+    margin: 0 !important;
+    padding: 0 !important;
+
+    // 确保背景延伸到边缘
+    background-color: #121218 !important;
+
+    // 移动端的 Edge-to-Edge 支持
+    -webkit-fill-available: 100%;
+  }
+
+  // 确保根元素也占满屏幕
+  #q-app {
+    height: 100vh !important;
+    height: 100dvh !important;
+    width: 100vw !important;
+    background-color: #121218 !important;
+  }
 }
 
 .q-layout {
   min-height: 100%; // 或者 height: 100%
+  background-color: #121218; // 确保布局有背景色
+
+  // 移动端 Edge-to-Edge 支持
+  @media screen and (max-width: 768px) {
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    width: 100vw !important;
+
+    // 确保内容可以延伸到状态栏和导航栏区域
+    position: relative;
+    overflow-x: hidden;
+  }
 }
 
 #q-app {
-  height: 100%;
-  width: 100%;
-  /* 移除 overflow: hidden，允许内容滚动 */
-  display: flex; /* 如果 #q-app 内部直接是 QLayout，flex 可能不是必需的 */
-  flex-direction: column; /* 如果使用 flex */
+  height: 100% !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  width: 100% !important;
+  background-color: #121218 !important; // 确保app容器有背景色
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden; // 只隐藏水平滚动，保留垂直滚动
+
+  // 移动端特殊处理
+  @media screen and (max-width: 768px) {
+    position: relative;
+    overflow-x: hidden; // 只隐藏水平滚动，保留垂直滚动
+  }
 }
+
+// Edge-to-Edge 模式专用样式类
+.edge-to-edge {
+  // 确保内容可以延伸到屏幕边缘
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important; // 动态视口高度
+
+  // 重置所有边距和填充
+  margin: 0 !important;
+  padding: 0 !important;
+
+  // 确保背景色延伸到边缘
+  background-color: #121218 !important;
+
+  // 移动端特定样式
+  @media screen and (max-width: 768px) {
+    // 确保延伸到状态栏区域
+    padding-top: constant(safe-area-inset-top);
+    padding-top: env(safe-area-inset-top);
+
+    // 确保延伸到导航栏区域
+    padding-bottom: constant(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom);
+
+    // 左右边缘
+    padding-left: constant(safe-area-inset-left);
+    padding-left: env(safe-area-inset-left);
+    padding-right: constant(safe-area-inset-right);
+    padding-right: env(safe-area-inset-right);
+
+    // 防止内容溢出
+    overflow-x: hidden;
+    position: relative;
+  }
+}
+
+// 针对移动端的全屏模式
+.mobile-fullscreen {
+  @media screen and (max-width: 768px) {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 1000;
+
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+
+    // 确保背景延伸到边缘
+    background-color: #121218 !important;
+
+    // 内容可以延伸到安全区域，但添加适当的内边距
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+    box-sizing: border-box;
+  }
+}
+
 // 定义一些可复用的辉光效果类
 .neon-glow-primary {
   box-shadow:

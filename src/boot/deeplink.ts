@@ -5,7 +5,7 @@ import { boot } from 'quasar/wrappers';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
-import type { CapacitorPlatformService } from 'src/services/platform';
+import type { CapacitorPlatformService } from 'src/services/core/platform';
 
 // 创建全局的平台服务实例，确保深链接处理器可以访问
 let capacitorPlatformService: CapacitorPlatformService | null = null;
@@ -35,29 +35,32 @@ export default boot(() => {
     App.addListener('appUrlOpen', async (data) => {
       console.log('[DeepLink] App opened with URL:', data.url);
 
-      // 立即尝试关闭浏览器，不管是什么URL
-      try {
-        console.log('[DeepLink] Attempting to close browser immediately...');
-        await Browser.close();
-        console.log('[DeepLink] Browser closed successfully');
-      } catch (closeError) {
-        console.warn('[DeepLink] Failed to close browser:', closeError);
-      }
-
       try {
         const url = new URL(data.url);
         console.log('[DeepLink] URL parsed, protocol:', url.protocol);
         console.log('[DeepLink] URL pathname:', url.pathname);
 
-        // 检查是否是OAuth回调
-        if (url.protocol === 'osu-music-fusion:' && url.pathname.includes('/callback')) {
-          console.log('[DeepLink] OAuth callback detected!');
+        // 检查是否是OAuth回调 - 兼容 /oauth/callback 和 /callback 两种路径
+        if (
+          url.protocol === 'osu-music-fusion:' &&
+          (url.pathname.includes('/oauth/callback') || url.pathname.includes('/callback'))
+        ) {
+          console.log('[DeepLink] OAuth callback detected! pathname:', url.pathname);
 
           const code = url.searchParams.get('code');
           const error = url.searchParams.get('error');
 
           console.log('[DeepLink] OAuth code present:', !!code);
           console.log('[DeepLink] OAuth error present:', !!error);
+
+          // 只有在确认是OAuth回调时才关闭浏览器
+          try {
+            console.log('[DeepLink] Closing browser after OAuth callback...');
+            await Browser.close();
+            console.log('[DeepLink] Browser closed successfully');
+          } catch (closeError) {
+            console.warn('[DeepLink] Failed to close browser:', closeError);
+          }
 
           // 通知平台服务
           if (capacitorPlatformService) {
@@ -71,7 +74,7 @@ export default boot(() => {
             if (error) pendingOAuthCallback.error = error;
           }
         } else {
-          console.log('[DeepLink] Not an OAuth callback URL');
+          console.log('[DeepLink] Not an OAuth callback URL, keeping browser open');
         }
       } catch (parseError) {
         console.error('[DeepLink] Error processing URL:', parseError);

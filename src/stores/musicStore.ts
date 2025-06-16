@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { audioService } from 'src/services/audioService';
+import { audioService } from 'src/services/business/audioService';
+import { MusicService } from 'src/services/business/musicService';
 
 export interface MusicTrack {
   id: string;
@@ -46,6 +47,9 @@ export const useMusicStore = defineStore('music', () => {
   const playQueue = ref<MusicTrack[]>([]);
   const currentQueueIndex = ref(0);
   const originalQueue = ref<MusicTrack[]>([]); // 保存原始队列用于随机模式切换
+
+  // 创建音乐服务实例 - 负责跨平台的音乐文件管理
+  const musicService = new MusicService();
 
   // 初始化音频服务事件监听
   const initAudioEvents = () => {
@@ -110,142 +114,39 @@ export const useMusicStore = defineStore('music', () => {
       .slice(0, 20);
   });
 
-  // 扫描音乐文件
+  // 扫描音乐文件 - 使用统一的 musicService 接口（支持 Electron & Capacitor）
   const scanMusicFiles = async () => {
     isLoading.value = true;
     error.value = null;
 
     try {
-      // 在 Electron 环境中，通过 IPC 扫描音乐文件夹
-      if (window.electron?.ipcRenderer) {
-        const result: {
-          success: boolean;
-          files?: Array<{
-            fileName: string;
-            filePath: string;
-            size: number;
-            lastModified: string;
-          }>;
-          error?: string;
-        } = await window.electron.ipcRenderer.invoke('scan-music-folder');
+      console.log('[MusicStore] Starting music scan using musicService...');
 
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to scan music folder');
-        }
+      // 使用 musicService 进行音乐库同步（内部处理平台差异）
+      await musicService.syncMusicLibrary();
 
-        const musicFiles = result.files || [];
-        console.log(`[MusicStore] Found ${musicFiles.length} music files in folder`);
+      // 从 musicService 获取音乐库
+      const musicTracks = await musicService.getMusicLibrary();
+      console.log(`[MusicStore] Found ${musicTracks.length} tracks from musicService`);
 
-        // 并发读取所有音频文件的真实时长
-        const scannedTracks: MusicTrack[] = await Promise.all(
-          musicFiles.map(async (fileInfo) => {
-            // 文件名格式：id-title-artist.mp3
-            const fileName = fileInfo.fileName;
-            const nameWithoutExt = fileName.replace(/\.(mp3|wav|ogg|m4a|flac)$/i, '');
-            const parts = nameWithoutExt.split('-');
-            const id = parts[0]
-              ? parts[0]
-              : `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            let title = '';
-            let artist = '';
-            if (parts.length >= 3) {
-              // id-title-artist
-              artist = String(parts[parts.length - 1] ?? '')
-                .replace(/_/g, ' ')
-                .trim();
-              title = parts
-                .slice(1, parts.length - 1)
-                .join('-')
-                .replace(/_/g, ' ')
-                .trim();
-            } else if (parts.length === 2) {
-              title = parts[1] ? parts[1].replace(/_/g, ' ').trim() : '';
-              artist = '';
-            } else {
-              title = nameWithoutExt;
-              artist = '';
-            }
+      // 转换为 MusicStore 的 MusicTrack 格式
+      const scannedTracks: MusicTrack[] = musicTracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        fileName: track.filePath.split('/').pop() || track.title,
+        filePath: track.filePath,
+        duration: track.duration,
+        artist: track.artist || 'Unknown Artist',
+        album: 'Unknown Album',
+        coverUrl: track.coverUrl || generateOsuCoverUrl(track.id),
+        addedDate: new Date().toISOString(),
+      }));
 
-            // 通过 Electron IPC 获取真实 duration
-            let duration: number | undefined = undefined;
-            try {
-              duration = await window.electron?.ipcRenderer?.invoke(
-                'get-audio-metadata',
-                fileInfo.filePath,
-              );
-            } catch (e) {
-              console.warn('Failed to get audio duration for', fileInfo.filePath, e);
-            }
-
-            return {
-              id,
-              title: title || fileName,
-              fileName,
-              filePath: fileInfo.filePath,
-              duration: duration, // 真实时长，单位：秒
-              artist: artist || 'Unknown Artist',
-              album: 'Unknown Album',
-              coverUrl: generateOsuCoverUrl(id || 'unknown'),
-              addedDate: fileInfo.lastModified,
-            };
-          }),
-        );
-
-        tracks.value = scannedTracks;
-      } else {
-        // 浏览器环境中的降级处理（使用模拟数据）
-        console.warn('[MusicStore] Not in Electron environment, using mock data');
-
-        // 在浏览器环境中，我们无法访问用户的文件系统，使用示例数据
-        const mockFiles = [
-          '1234567-Senbonzakura.mp3',
-          '2345678-Through_the_Fire_and_Flames.mp3',
-          '3456789-Blue_Zenith.mp3',
-          '4567890-Necrofantasia.mp3',
-          '5678901-FREEDOM_DiVE.mp3',
-        ];
-
-        const scannedTracks: MusicTrack[] = mockFiles.map((fileName) => {
-          const nameWithoutExt = fileName.replace('.mp3', '');
-          const parts = nameWithoutExt.split('-');
-          const id = parts[0] ? parts[0] : 'unknown';
-          let artist = '';
-          let title = '';
-          if (parts.length >= 3) {
-            artist = String(parts[parts.length - 1] ?? '')
-              .replace(/_/g, ' ')
-              .trim();
-            title = parts
-              .slice(1, parts.length - 1)
-              .join('-')
-              .replace(/_/g, ' ')
-              .trim();
-          } else if (parts.length === 2) {
-            title = parts[1] ? parts[1].replace(/_/g, ' ').trim() : '';
-            artist = '';
-          } else {
-            title = nameWithoutExt;
-            artist = '';
-          }
-
-          return {
-            id,
-            title,
-            fileName,
-            filePath: `/music/${fileName}`,
-            duration: Math.floor(Math.random() * 300) + 60,
-            artist: artist || 'Unknown Artist',
-            album: getRandomAlbum(),
-            coverUrl: generateOsuCoverUrl(id || 'unknown'),
-            addedDate: getRandomDate(),
-          };
-        });
-
-        tracks.value = scannedTracks;
-      }
+      tracks.value = scannedTracks;
+      console.log(`[MusicStore] Successfully loaded ${scannedTracks.length} tracks`);
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to scan music files';
-      console.error('Music scan error:', err);
+      console.error('[MusicStore] Music scan error:', err);
     } finally {
       isLoading.value = false;
     }
@@ -512,45 +413,35 @@ export const useMusicStore = defineStore('music', () => {
     }
   };
 
-  // 删除音乐文件（包括从文件系统删除和从库中移除）
+  // 删除音乐文件（支持 Electron & Capacitor） - 使用统一的 musicService 接口
   const deleteTrackFile = async (
     track: MusicTrack,
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      // 在 Electron 环境中，通过 IPC 删除文件
-      if (window.electron?.ipcRenderer) {
-        const result: { success: boolean; error?: string } =
-          await window.electron.ipcRenderer.invoke('delete-music-file', track.filePath);
+      console.log(`[MusicStore] Deleting track: ${track.title}`);
 
-        if (result.success) {
-          // 从库中移除
-          removeTrack(track.id);
+      // 使用 musicService 删除文件（内部处理平台差异和库更新）
+      await musicService.deleteMusicFile(track.filePath);
 
-          // 如果正在播放这首歌，停止播放
-          if (currentTrack.value?.id === track.id) {
-            stopTrack();
-          }
+      // 从本地状态中移除
+      removeTrack(track.id);
 
-          // 从播放队列中移除
-          const queueIndex = playQueue.value.findIndex((t) => t.id === track.id);
-          if (queueIndex > -1) {
-            removeFromQueue(queueIndex);
-          }
-
-          console.log(`Deleted track file and removed from library: ${track.title}`);
-          return { success: true };
-        } else {
-          return { success: false, error: result.error || 'Failed to delete file' };
-        }
-      } else {
-        // 浏览器环境中只从库中移除
-        removeTrack(track.id);
-        console.log(`Removed track from library (browser mode): ${track.title}`);
-        return { success: true };
+      // 如果正在播放这首歌，停止播放
+      if (currentTrack.value?.id === track.id) {
+        stopTrack();
       }
+
+      // 从播放队列中移除
+      const queueIndex = playQueue.value.findIndex((t) => t.id === track.id);
+      if (queueIndex > -1) {
+        removeFromQueue(queueIndex);
+      }
+
+      console.log(`[MusicStore] Successfully deleted track: ${track.title}`);
+      return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete track';
-      console.error('Error deleting track:', error);
+      console.error('[MusicStore] Error deleting track:', error);
       return { success: false, error: errorMessage };
     }
   };
@@ -616,35 +507,38 @@ export const useMusicStore = defineStore('music', () => {
     return null;
   };
 
-  // 新增: 清理音乐库（移除不存在的文件记录）
+  // 清理音乐库（移除不存在的文件记录） - 使用统一的 musicService 接口
   const cleanupMusicLibrary = async () => {
     isLoading.value = true;
     error.value = null;
 
     try {
-      console.log('[MusicStore] Starting library cleanup...');
-      const validTracks: MusicTrack[] = [];
+      console.log('[MusicStore] Starting library cleanup using musicService...');
 
-      for (const track of tracks.value) {
-        // 在实际应用中，这里应该检查文件是否存在
-        // 目前先假设检查逻辑，稍后可以集成platform服务
-        try {
-          // TODO: 集成平台服务的文件存在检查
-          // const exists = await platform.exists(track.filePath);
+      // 使用 musicService 进行库清理（内部处理平台差异）
+      await musicService.cleanupMusicLibrary();
 
-          // 临时逻辑：检查文件路径是否合理
-          if (track.filePath && track.fileName && track.title) {
-            validTracks.push(track);
-          } else {
-            console.log('[MusicStore] Removing invalid track:', track.title || track.fileName);
-          }
-        } catch (error) {
-          console.warn('[MusicStore] Error checking track:', track.title, error);
-        }
-      }
+      // 重新获取清理后的音乐库
+      const musicTracks = await musicService.getMusicLibrary();
+      console.log(`[MusicStore] Found ${musicTracks.length} valid tracks after cleanup`);
 
-      tracks.value = validTracks;
-      console.log(`[MusicStore] Cleanup complete. ${validTracks.length} valid tracks remaining.`);
+      // 转换为 MusicStore 的 MusicTrack 格式
+      const cleanedTracks: MusicTrack[] = musicTracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        fileName: track.filePath.split('/').pop() || track.title,
+        filePath: track.filePath,
+        duration: track.duration,
+        artist: track.artist || 'Unknown Artist',
+        album: 'Unknown Album',
+        coverUrl: track.coverUrl || generateOsuCoverUrl(track.id),
+        addedDate: new Date().toISOString(),
+      }));
+
+      tracks.value = cleanedTracks;
+      console.log(
+        `[MusicStore] Library cleanup completed. ${cleanedTracks.length} valid tracks remaining.`,
+      );
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to cleanup library';
       console.error('[MusicStore] Cleanup failed:', err);
@@ -653,20 +547,35 @@ export const useMusicStore = defineStore('music', () => {
     }
   };
 
-  // 新增: 同步音乐库（扫描文件夹并更新库）
+  // 同步音乐库（扫描文件夹并更新库） - 使用统一的 musicService 接口
   const syncMusicLibrary = async () => {
     isLoading.value = true;
     error.value = null;
 
     try {
-      console.log('[MusicStore] Starting library sync...');
+      console.log('[MusicStore] Starting library sync using musicService...');
 
-      // 先清理现有库
-      await cleanupMusicLibrary();
+      // 使用 musicService 进行库同步（内部处理清理、扫描、更新等逻辑）
+      await musicService.syncMusicLibrary();
 
-      // 然后重新扫描
-      await scanMusicFiles();
+      // 重新获取同步后的音乐库
+      const musicTracks = await musicService.getMusicLibrary();
+      console.log(`[MusicStore] Found ${musicTracks.length} tracks after sync`);
 
+      // 转换为 MusicStore 的 MusicTrack 格式
+      const syncedTracks: MusicTrack[] = musicTracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        fileName: track.filePath.split('/').pop() || track.title,
+        filePath: track.filePath,
+        duration: track.duration,
+        artist: track.artist || 'Unknown Artist',
+        album: 'Unknown Album',
+        coverUrl: track.coverUrl || generateOsuCoverUrl(track.id),
+        addedDate: new Date().toISOString(),
+      }));
+
+      tracks.value = syncedTracks;
       console.log('[MusicStore] Library sync completed.');
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to sync library';
@@ -676,18 +585,21 @@ export const useMusicStore = defineStore('music', () => {
     }
   };
 
-  // 新增: 重置音乐库
+  // 重置音乐库 - 使用统一的 musicService 接口
   const resetMusicLibrary = async () => {
     isLoading.value = true;
     error.value = null;
 
     try {
-      console.log('[MusicStore] Resetting music library...');
+      console.log('[MusicStore] Resetting music library using musicService...');
 
       // 停止当前播放
       await stopTrack();
 
-      // 清空所有数据
+      // 使用 musicService 重置音乐库（内部处理平台差异）
+      await musicService.resetMusicLibrary();
+
+      // 清空所有本地状态
       tracks.value = [];
       currentTrack.value = null;
       currentPlaylist.value = null;
@@ -761,28 +673,6 @@ export const useMusicStore = defineStore('music', () => {
     resetMusicLibrary,
   };
 });
-
-// 辅助函数
-function getRandomAlbum(): string {
-  const albums = [
-    'Vocaloid Collection',
-    'Inhuman Rampage',
-    'Parousia',
-    'Touhou Project',
-    'Electronic Beats',
-    'Melodic Dubstep',
-    'Hardcore Heaven',
-    'Rhythm Game Classics',
-  ];
-  return albums[Math.floor(Math.random() * albums.length)] || 'Unknown Album';
-}
-
-function getRandomDate(): string {
-  const start = new Date('2023-01-01');
-  const end = new Date();
-  const randomDate = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
-  return randomDate.toISOString();
-}
 
 // 生成 osu! 封面 URL 的辅助函数
 function generateOsuCoverUrl(beatmapsetId: string): string {

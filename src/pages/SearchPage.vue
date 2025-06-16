@@ -10,14 +10,28 @@
     <div class="search-controls q-mb-xl">
       <!-- 主搜索框 -->
       <div class="search-input-container q-mb-md">
-        <q-input v-model="searchQuery" placeholder="Search for songs, artists, or beatmaps..." filled dark
-          class="search-input" @keyup.enter="() => performSearch()" clearable>
+        <q-input
+          v-model="searchQuery"
+          placeholder="Search for songs, artists, or beatmaps..."
+          filled
+          dark
+          class="search-input"
+          @keyup.enter="() => performSearch()"
+          clearable
+        >
           <template #prepend>
             <q-icon name="search" />
           </template>
           <template #append>
-            <q-btn flat round icon="search" color="primary" @click="() => performSearch()" :loading="isSearching"
-              :disable="!searchQuery.trim()" />
+            <q-btn
+              flat
+              round
+              icon="search"
+              color="primary"
+              @click="() => performSearch()"
+              :loading="isSearching"
+              :disable="!searchQuery.trim()"
+            />
           </template>
         </q-input>
       </div>
@@ -25,19 +39,56 @@
       <!-- 过滤器行 -->
       <div class="search-filters row q-gutter-md">
         <!-- 游戏模式 -->
-        <q-select v-model="selectedMode" :options="modeOptions" option-value="value" option-label="label" filled dark
-          label="Game Mode" class="col-auto" style="min-width: calc(150px)" @update:model-value="onFilterChange" />
+        <q-select
+          v-model="selectedMode"
+          :options="modeOptions"
+          option-value="value"
+          option-label="label"
+          filled
+          dark
+          label="Game Mode"
+          class="col-auto"
+          style="min-width: calc(150px)"
+          @update:model-value="onFilterChange"
+        />
 
         <!-- 排序方式 -->
-        <q-select v-model="sortBy" :options="sortOptions" option-value="value" option-label="label" filled dark
-          label="Sort By" class="col-auto" style="min-width: calc(150px)" @update:model-value="onFilterChange" />
+        <q-select
+          v-model="sortBy"
+          :options="sortOptions"
+          option-value="value"
+          option-label="label"
+          filled
+          dark
+          label="Sort By"
+          class="col-auto"
+          style="min-width: calc(150px)"
+          @update:model-value="onFilterChange"
+        />
 
         <!-- 状态过滤 -->
-        <q-select v-model="statusFilter" :options="statusOptions" option-value="value" option-label="label" filled dark
-          label="Status" class="col-auto" style="min-width: calc(130px)" @update:model-value="onFilterChange" />
+        <q-select
+          v-model="statusFilter"
+          :options="statusOptions"
+          option-value="value"
+          option-label="label"
+          filled
+          dark
+          label="Status"
+          class="col-auto"
+          style="min-width: calc(130px)"
+          @update:model-value="onFilterChange"
+        />
 
         <!-- 重置按钮 -->
-        <q-btn flat color="secondary" icon="refresh" label="Reset" @click="resetFilters" class="col-auto" />
+        <q-btn
+          flat
+          color="secondary"
+          icon="refresh"
+          label="Reset"
+          @click="resetFilters"
+          class="col-auto"
+        />
       </div>
     </div>
 
@@ -50,14 +101,17 @@
       </div>
 
       <!-- 无搜索结果 -->
-      <div v-else-if="searchPerformed && searchResults.length === 0" class="no-results text-center q-py-xl">
+      <div
+        v-else-if="searchPerformed && (!searchResults || searchResults.length === 0)"
+        class="no-results text-center q-py-xl"
+      >
         <q-icon name="search_off" size="60px" color="grey-6" />
         <h5 class="text-grey-6 q-mt-md">No Results Found</h5>
         <p class="text-grey-7">Try adjusting your search terms or filters.</p>
       </div>
 
       <!-- 搜索结果列表 -->
-      <div v-else-if="searchResults.length > 0" class="results-container">
+      <div v-else-if="searchResults && searchResults.length > 0" class="results-container">
         <!-- 结果统计 -->
         <div class="results-info q-mb-md">
           <p class="text-grey-6">
@@ -68,8 +122,12 @@
 
         <!-- Beatmap 列表 -->
         <div class="beatmap-grid">
-          <BeatmapCard v-for="beatmapset in searchResults" :key="beatmapset.id" :beatmapset="beatmapset"
-            @click="openBeatmapDetails(beatmapset)" />
+          <BeatmapCard
+            v-for="beatmapset in searchResults"
+            :key="beatmapset.id"
+            :beatmapset="beatmapset"
+            @click="openBeatmapDetails(beatmapset)"
+          />
         </div>
       </div>
 
@@ -89,8 +147,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useQuasar } from 'quasar';
-import { api as osuApi } from 'boot/axios';
-import { useAuthStore } from 'src/services/auth';
+import { osuHttpService } from 'src/services/api/httpService';
+import { useAuthStore } from 'src/stores/authStore';
 import BeatmapCard from 'src/components/BeatmapCard.vue';
 
 interface BeatmapSet {
@@ -136,7 +194,7 @@ interface BeatmapSet {
   }>;
 }
 
-interface SearchParams {
+interface SearchParams extends Record<string, unknown> {
   q?: string;
   m?: number;
   s?: string;
@@ -227,7 +285,7 @@ const performSearch = async () => {
   try {
     const params = buildSearchParams();
 
-    const response = await osuApi.get<{
+    const response = await osuHttpService.get<{
       beatmapsets: BeatmapSet[];
       cursor?: { approved_date?: string; _id?: string };
       total?: number;
@@ -238,7 +296,23 @@ const performSearch = async () => {
       },
     });
 
-    const { beatmapsets, total } = response.data;
+    console.log('[SearchPage] Raw response:', response);
+    console.log('[SearchPage] Response data:', response.data);
+    console.log('[SearchPage] Response data type:', typeof response.data);
+
+    // 检查数据结构
+    if (!response.data) {
+      throw new Error('No data received from API');
+    }
+
+    const responseData = response.data;
+    const beatmapsets = responseData.beatmapsets || [];
+    const total = responseData.total || 0;
+
+    if (!Array.isArray(beatmapsets)) {
+      console.error('[SearchPage] beatmapsets is not an array:', beatmapsets);
+      throw new Error('Invalid response format: beatmapsets is not an array');
+    }
 
     searchResults.value = beatmapsets;
     searchPerformed.value = true;
@@ -250,18 +324,15 @@ const performSearch = async () => {
   } catch (error: unknown) {
     console.error('[SearchPage] Search error:', error);
 
-    // 类型安全的错误处理
+    // 确保 searchResults 始终是一个数组
+    searchResults.value = [];
+    searchPerformed.value = true;
+    totalResults.value = 0;
+
+    // 简化的错误处理
     let errorMessage = 'Failed to search beatmaps';
-    if (error && typeof error === 'object' && 'response' in error) {
-      const axiosError = error as {
-        response?: { data?: { error?: string; message?: string } };
-        message?: string;
-      };
-      errorMessage =
-        axiosError.response?.data?.error ||
-        axiosError.response?.data?.message ||
-        axiosError.message ||
-        'Failed to search beatmaps';
+    if (error instanceof Error) {
+      errorMessage = error.message;
     }
 
     $q.notify({

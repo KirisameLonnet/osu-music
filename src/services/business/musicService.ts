@@ -1,17 +1,11 @@
-// src/services/musicService.ts
+// src/services/business/musicService.ts
 // 音乐服务 - 使用统一的平台抽象层
 
-import { getPlatformService } from './platform';
-import type { PlatformService } from './platform/types';
-
-interface MusicTrack {
-  id: string;
-  title: string;
-  artist: string;
-  duration: number;
-  filePath: string;
-  coverUrl?: string;
-}
+import { getPlatformService } from '../core/platform';
+import { BeatmapFileNameParser } from 'src/utils/beatmapFileNameParser';
+import { coverImageService } from './coverImageService';
+import type { PlatformService } from '../core/platform/types';
+import type { MusicTrack } from 'src/stores/musicStore';
 
 interface Playlist {
   id: string;
@@ -34,19 +28,34 @@ export class MusicService {
 
   private async initializeDirectories(): Promise<void> {
     try {
-      // 获取文档目录（对于iOS，这将是OSU Music专用目录）
+      // 获取文档目录（对于iOS，这将是Documents目录）
       const documentsDir = await this.platform.getDocumentsDirectory();
 
-      this.musicDirectory = `${documentsDir}/Music`;
-      this.playlistsDirectory = `${documentsDir}/Playlists`;
+      // 获取平台信息
+      const platformInfo = this.platform.getPlatformInfo();
 
-      // 确保目录存在
-      await this.platform.createDirectory(this.musicDirectory);
-      await this.platform.createDirectory(this.playlistsDirectory);
+      if (platformInfo.type === 'ios') {
+        // iOS上，音频文件直接放在Documents根目录，只有playlists需要子目录
+        this.musicDirectory = ''; // 空字符串表示Documents根目录
+        this.playlistsDirectory = 'playlists';
+      } else {
+        // 其他平台使用Music子目录
+        this.musicDirectory = `${documentsDir}/Music`;
+        this.playlistsDirectory = `${documentsDir}/Playlists`;
+      }
+
+      // 确保playlists目录存在（音频文件目录在iOS上就是根目录，不需要创建）
+      if (platformInfo.type === 'ios') {
+        await this.platform.createDirectory(this.playlistsDirectory);
+      } else {
+        await this.platform.createDirectory(this.musicDirectory);
+        await this.platform.createDirectory(this.playlistsDirectory);
+      }
 
       console.log('[MusicService] Initialized directories:', {
-        music: this.musicDirectory,
+        music: this.musicDirectory || 'Documents root',
         playlists: this.playlistsDirectory,
+        platformType: platformInfo.type,
       });
     } catch (error) {
       console.error('[MusicService] Failed to initialize directories:', error);
@@ -67,7 +76,8 @@ export class MusicService {
         try {
           // 将文件保存到音乐目录
           const fileName = this.sanitizeFileName(file.name);
-          const filePath = `Music/${fileName}`;
+          // 在iOS上直接保存到根目录，其他平台保存到Music目录
+          const filePath = this.musicDirectory ? `${this.musicDirectory}/${fileName}` : fileName;
 
           if (file.data) {
             await this.platform.writeFile({
@@ -76,13 +86,26 @@ export class MusicService {
             });
 
             // 创建音乐轨道对象
+            const trackInfo = this.parseTrackInfo(fileName);
             const track: MusicTrack = {
               id: this.generateId(),
-              title: this.extractTitle(fileName),
-              artist: 'Unknown Artist',
+              title: trackInfo.title,
+              artist: trackInfo.artist,
+              fileName,
               duration: 0, // 需要音频元数据解析
               filePath,
+              addedDate: new Date().toISOString(),
             };
+
+            // 如果有封面 URL，添加到轨道信息中
+            if (trackInfo.coverUrl) {
+              track.coverUrl = trackInfo.coverUrl;
+            }
+
+            // 如果有 beatmap ID，添加额外信息
+            if (trackInfo.beatmapId) {
+              track.album = `osu! Beatmap #${trackInfo.beatmapId}`;
+            }
 
             importedTracks.push(track);
             console.log('[MusicService] Imported track:', track.title);
@@ -189,13 +212,26 @@ export class MusicService {
         data: response.data as ArrayBuffer,
       });
 
+      const trackInfo = this.parseTrackInfo(sanitizedFilename);
       const track: MusicTrack = {
         id: this.generateId(),
-        title: this.extractTitle(sanitizedFilename),
-        artist: 'Downloaded',
+        title: trackInfo.title,
+        artist: trackInfo.artist || 'Downloaded',
+        fileName: sanitizedFilename,
         duration: 0,
         filePath,
+        addedDate: new Date().toISOString(),
       };
+
+      // 如果有封面 URL，添加到轨道信息中
+      if (trackInfo.coverUrl) {
+        track.coverUrl = trackInfo.coverUrl;
+      }
+
+      // 如果有 beatmap ID，添加额外信息
+      if (trackInfo.beatmapId) {
+        track.album = `osu! Beatmap #${trackInfo.beatmapId}`;
+      }
 
       // 添加到音乐库
       await this.saveMusicLibrary([track]);
@@ -294,23 +330,39 @@ export class MusicService {
       const existingTracks = await this.getMusicLibrary();
       const existingPaths = new Set(existingTracks.map((track) => track.filePath));
 
-      // 扫描Music文件夹
+      // 扫描音乐目录（在iOS上是根目录，其他平台是Music文件夹）
       try {
-        const files = await this.platform.listDirectory('Music');
+        const scanDirectory = this.musicDirectory || '.'; // 空字符串或'.'表示根目录
+        const files = await this.platform.listDirectory(scanDirectory);
         const newTracks: MusicTrack[] = [];
 
         for (const file of files) {
-          const filePath = `Music/${file.name}`;
+          // 在iOS上，文件直接在根目录，路径就是文件名
+          // 在其他平台，保持原有的Music/filename格式
+          const filePath = this.musicDirectory ? `${this.musicDirectory}/${file.name}` : file.name;
 
           // 检查是否是音频文件且不在现有库中
           if (this.isAudioFile(file.name) && !existingPaths.has(filePath)) {
+            const trackInfo = this.parseTrackInfo(file.name);
             const track: MusicTrack = {
               id: this.generateId(),
-              title: this.extractTitle(file.name),
-              artist: 'Unknown Artist',
+              title: trackInfo.title,
+              artist: trackInfo.artist || 'Unknown Artist',
+              fileName: file.name,
               duration: 0,
               filePath,
+              addedDate: new Date().toISOString(),
             };
+
+            // 如果有封面 URL，添加到轨道信息中
+            if (trackInfo.coverUrl) {
+              track.coverUrl = trackInfo.coverUrl;
+            }
+
+            // 如果有 beatmap ID，添加额外信息
+            if (trackInfo.beatmapId) {
+              track.album = `osu! Beatmap #${trackInfo.beatmapId}`;
+            }
 
             newTracks.push(track);
             console.log('[MusicService] Found new track:', track.title);
@@ -320,6 +372,12 @@ export class MusicService {
         if (newTracks.length > 0) {
           await this.saveMusicLibrary(newTracks);
           console.log(`[MusicService] Added ${newTracks.length} new tracks to library.`);
+
+          // 异步加载所有新音轨的封面
+          console.log('[MusicService] Starting to load covers for new tracks...');
+          const coverPromises = newTracks.map((track) => this.loadTrackCover(track));
+          await Promise.allSettled(coverPromises);
+          console.log('[MusicService] Finished loading covers for new tracks.');
         }
       } catch (error) {
         console.warn('[MusicService] Could not scan Music directory:', error);
@@ -349,6 +407,28 @@ export class MusicService {
     }
   }
 
+  // 删除音乐文件
+  async deleteMusicFile(filePath: string): Promise<void> {
+    try {
+      console.log('[MusicService] Deleting music file:', filePath);
+
+      // 使用平台服务删除文件
+      await this.platform.deleteFile(filePath);
+
+      // 从音乐库中移除对应的记录
+      const tracks = await this.getMusicLibrary();
+      const updatedTracks = tracks.filter((track) => track.filePath !== filePath);
+
+      // 保存更新后的音乐库
+      await this.platform.setStorage('music-library', JSON.stringify(updatedTracks));
+
+      console.log('[MusicService] Successfully deleted music file and updated library');
+    } catch (error) {
+      console.error('[MusicService] Failed to delete music file:', error);
+      throw error;
+    }
+  }
+
   // 工具方法
   private generateId(): string {
     return `track_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -360,6 +440,83 @@ export class MusicService {
 
   private extractTitle(fileName: string): string {
     return fileName.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
+  }
+
+  /**
+   * 解析音轨信息（支持 beatmap 文件名格式）
+   */
+  private parseTrackInfo(fileName: string): {
+    title: string;
+    artist: string;
+    beatmapId?: number;
+    coverUrl?: string;
+  } {
+    // 尝试解析 beatmap 文件名格式
+    const parsed = BeatmapFileNameParser.parseBeatmapFileName(fileName);
+
+    if (parsed) {
+      return {
+        title: parsed.title,
+        artist: parsed.artist,
+        beatmapId: parsed.beatmapId,
+        // 注意：这里先返回原始 URL，实际使用时会通过 coverImageService 处理
+        coverUrl: BeatmapFileNameParser.generateCoverUrl(parsed.beatmapId),
+      };
+    }
+
+    // 回退到传统解析方式
+    return {
+      title: this.extractTitle(fileName),
+      artist: 'Unknown Artist',
+    };
+  }
+
+  /**
+   * 异步获取并设置音轨封面图片
+   */
+  async loadTrackCover(track: MusicTrack): Promise<void> {
+    console.log('[MusicService] Loading cover for track:', track.title);
+
+    if (!track.coverUrl) {
+      console.log('[MusicService] No cover URL found for track:', track.title);
+      return;
+    }
+
+    // 从封面 URL 中提取 beatmap ID
+    const match = track.coverUrl.match(/beatmaps\/(\d+)\/covers/);
+    if (!match || !match[1]) {
+      console.log('[MusicService] Could not extract beatmap ID from cover URL:', track.coverUrl);
+      return;
+    }
+
+    const beatmapId = parseInt(match[1], 10);
+    if (isNaN(beatmapId)) {
+      console.log('[MusicService] Invalid beatmap ID extracted:', match[1]);
+      return;
+    }
+
+    try {
+      console.log('[MusicService] Attempting to load cover for beatmap ID:', beatmapId);
+
+      // 使用 coverImageService 获取实际可用的封面 URL
+      const actualCoverUrl = await coverImageService.getCoverImage(beatmapId, 'card');
+
+      console.log('[MusicService] Cover loaded successfully:', actualCoverUrl);
+      track.coverUrl = actualCoverUrl;
+
+      // 更新音乐库中的记录
+      const tracks = await this.getMusicLibrary();
+      const trackIndex = tracks.findIndex((t) => t.id === track.id);
+      if (trackIndex !== -1 && tracks[trackIndex]) {
+        tracks[trackIndex].coverUrl = actualCoverUrl;
+        await this.platform.setStorage('music-library', JSON.stringify(tracks));
+        console.log('[MusicService] Updated cover URL in music library');
+      }
+    } catch (error) {
+      console.warn(`[MusicService] Failed to load cover for track ${track.title}:`, error);
+      // 保持原始 URL 或清空
+      delete track.coverUrl;
+    }
   }
 
   private async updatePlaylistIndex(playlist: Playlist): Promise<void> {

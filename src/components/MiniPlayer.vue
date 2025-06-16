@@ -302,6 +302,12 @@ onBeforeUnmount(() => {
   pointer-events: none;
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 
+  // 移动端：使用新的 CSS 变量正确适配底部安全区域
+  @media (max-width: 768px) {
+    width: calc(100% - 20px); // 移动端减少左右边距
+    bottom: calc(var(--safe-area-inset-bottom, 0px) + 20px); // 安全区域 + 基本间距
+  }
+
   &.is-collapsed {
     // 简单的向下平移收起，保持原来的宽度
     transform: translateX(-50%) translateY(60px);

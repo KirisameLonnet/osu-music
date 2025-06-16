@@ -1,4 +1,4 @@
-// src/services/platform/index.ts
+// src/services/core/platform/index.ts
 // 平台服务工厂 - 自动检测并返回对应的平台实现
 
 import { Capacitor } from '@capacitor/core';

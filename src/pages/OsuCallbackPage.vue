@@ -21,11 +21,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from 'src/services/auth';
+import { useAuthStore } from 'src/stores/authStore';
 import { useSettingsStore } from 'src/stores/settingsStore';
 import { useQuasar } from 'quasar';
-import { getPlatformService, CapacitorPlatformService } from 'src/services/platform';
-import { handleOsuCallback } from 'src/services/osuAuthService';
+import { getPlatformService, CapacitorPlatformService } from 'src/services/core/platform';
+import { handleOsuCallback } from 'src/services/api/osuAuthService';
 import { setCapacitorPlatformService } from 'src/boot/deeplink';
 
 const router = useRouter();
@@ -57,13 +57,19 @@ async function startOAuthFlow() {
       redirectUri: 'osu-music-fusion://oauth/callback',
     });
 
-    statusMessage.value = 'Opening OAuth browser...';
-
-    // 如果是Capacitor平台，注册平台服务实例到深链接处理器
+    // 如果是Capacitor平台，先注册平台服务实例到深链接处理器
     if (platform instanceof CapacitorPlatformService) {
       setCapacitorPlatformService(platform);
       console.log('[OsuCallbackPage] Registered platform service with deep link handler');
+
+      // 给一点时间让深链接处理器完全初始化
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
+
+    statusMessage.value = 'Opening OAuth browser...';
+    console.log(
+      '[OsuCallbackPage] Important: Make sure the OSU! developer console has this redirect URI: osu-music-fusion://oauth/callback',
+    );
 
     const result = await platform.openOAuth({
       clientId: settingsStore.osuClientId,
@@ -75,7 +81,9 @@ async function startOAuthFlow() {
     });
 
     if (result.error) {
-      throw new Error(result.error);
+      throw new Error(
+        `OAuth error: ${result.error}${result.errorDescription ? ` - ${result.errorDescription}` : ''}`,
+      );
     }
 
     if (result.code) {

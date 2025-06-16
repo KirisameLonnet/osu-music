@@ -2,19 +2,23 @@
 // Vue 3 组合式API - 平台服务集成
 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { getPlatformService } from '../services/platform';
-import type { PlatformInfo, AppLifecycleListener } from '../services/platform/types';
+import { getPlatformService } from '../services/core/platform';
+import { PlatformType } from '../services/core/platform/types';
+import type {
+  PlatformInfo as CorePlatformInfo,
+  AppLifecycleListener,
+} from '../services/core/platform/types';
 
 export function usePlatform() {
   const platform = getPlatformService();
-  const platformInfo = ref<PlatformInfo>(platform.getPlatformInfo());
+  const platformInfo = ref<CorePlatformInfo>(platform.getPlatformInfo());
   const isLoading = ref(false);
   const error = ref<string | null>(null);
 
   // 计算属性
-  const isElectron = computed(() => platformInfo.value.type === 'electron');
-  const isIOS = computed(() => platformInfo.value.type === 'ios');
-  const isAndroid = computed(() => platformInfo.value.type === 'android');
+  const isElectron = computed(() => platformInfo.value.type === PlatformType.ELECTRON);
+  const isIOS = computed(() => platformInfo.value.type === PlatformType.IOS);
+  const isAndroid = computed(() => platformInfo.value.type === PlatformType.ANDROID);
   const isMobile = computed(() => platformInfo.value.isMobile);
   const isNative = computed(() => platformInfo.value.isNative);
 
@@ -197,10 +201,15 @@ export function useMusicFiles() {
   const initializeMusicDirectory = async () => {
     try {
       const docsDir = await getDocumentsDirectory();
-      musicDirectory.value = `${docsDir}/Music`;
-
-      // 确保目录存在
-      await platform.createDirectory(musicDirectory.value);
+      // 在iOS上音频文件直接放在Documents根目录，在其他平台使用完整路径
+      const platformInfo = platform.getPlatformInfo();
+      if (platformInfo.type === PlatformType.IOS) {
+        musicDirectory.value = ''; // 空字符串表示Documents根目录
+      } else {
+        musicDirectory.value = `${docsDir}/Music`;
+        // 确保目录存在
+        await platform.createDirectory(musicDirectory.value);
+      }
 
       // 加载音乐文件列表
       await loadMusicFiles();
@@ -211,7 +220,8 @@ export function useMusicFiles() {
 
   const loadMusicFiles = async () => {
     try {
-      const files = await platform.listDirectory(musicDirectory.value);
+      const scanDirectory = musicDirectory.value || '.'; // 空字符串使用'.'表示当前目录
+      const files = await platform.listDirectory(scanDirectory);
       musicFiles.value = files
         .filter((file) => file.type === 'file')
         .filter((file) => /\.(mp3|wav|flac|ogg|m4a)$/i.test(file.name));
@@ -232,7 +242,8 @@ export function useMusicFiles() {
       for (const file of selectedFiles) {
         if (file.data) {
           const fileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const filePath = `${musicDirectory.value}/${fileName}`;
+          // 在iOS上直接保存到根目录，其他平台保存到Music目录
+          const filePath = musicDirectory.value ? `${musicDirectory.value}/${fileName}` : fileName;
 
           await writeFile(filePath, file.data);
           importedFiles.push({

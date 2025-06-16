@@ -58,6 +58,13 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Playlist', icon: 'queue_music' },
         props: true, // 使路由参数作为props传递给组件
       },
+      // Safe Area 演示页面
+      {
+        path: 'safe-area-demo', // 访问 '/safe-area-demo'
+        name: 'safeAreaDemo',
+        component: () => import('pages/SafeAreaDemoPage.vue'),
+        meta: { title: 'Safe Area Demo', icon: 'phone_iphone' },
+      },
       // 认证设置页
       {
         path: 'auth-settings', // 访问 '/auth-settings'
@@ -71,6 +78,13 @@ const routes: RouteRecordRaw[] = [
         name: 'platformTest',
         component: () => import('pages/PlatformTestPage.vue'),
         meta: { title: 'Platform Test', icon: 'science' },
+      },
+      // Edge-to-Edge 测试页面
+      {
+        path: 'edge-to-edge-test', // 访问 '/edge-to-edge-test'
+        name: 'edgeToEdgeTest',
+        component: () => import('pages/EdgeToEdgeTestPage.vue'),
+        meta: { title: 'Edge-to-Edge Test', icon: 'fullscreen' },
       },
       {
         path: 'oauth/callback', // Osu! 回调路由

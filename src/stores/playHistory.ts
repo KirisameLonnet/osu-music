@@ -1,8 +1,7 @@
 // src/stores/playHistoryStore.ts
 import { defineStore } from 'pinia';
-import { api as osuApi } from 'boot/axios'; // 假设你的 axios 实例已导出
-import type { AxiosError } from 'axios';
-import { useAuthStore } from 'src/services/auth'; // 用于获取当前用户ID和token
+import { osuHttpService } from 'src/services/api/httpService';
+import { useAuthStore } from 'src/stores/authStore'; // 用于获取当前用户ID和token
 
 export interface CoverImages {
   cover: string;
@@ -152,7 +151,7 @@ export const usePlayHistoryStore = defineStore('playHistory', {
               include_fails: includeFails ? 1 : 0,
             };
             console.log(`[PlayHistoryStore] Fetching mode "${m}" with params:`, params);
-            return osuApi
+            return osuHttpService
               .get<Score[]>(`/users/${targetUserId}/scores/recent`, {
                 params,
                 headers: { Authorization: `Bearer ${authStore.accessToken}` },
@@ -190,11 +189,23 @@ export const usePlayHistoryStore = defineStore('playHistory', {
               offset,
             };
             console.log(`[PlayHistoryStore] Single mode "${mode}" request with params:`, params);
-            const response = await osuApi.get<Score[]>(`/users/${targetUserId}/scores/recent`, {
-              params,
-              headers: { Authorization: `Bearer ${authStore.accessToken}` },
-            });
-            const newScores = response.data;
+            const response = await osuHttpService.get<Score[]>(
+              `/users/${targetUserId}/scores/recent`,
+              {
+                params,
+                headers: { Authorization: `Bearer ${authStore.accessToken}` },
+              },
+            );
+
+            console.log('[PlayHistoryStore] Raw response:', response);
+            console.log('[PlayHistoryStore] Response data:', response.data);
+            console.log('[PlayHistoryStore] Response data type:', typeof response.data);
+
+            if (!response.data) {
+              throw new Error('No scores data received from API');
+            }
+
+            const newScores = Array.isArray(response.data) ? response.data : [];
             console.log(
               `[PlayHistoryStore] Single mode "${mode}" returned ${newScores.length} scores`,
             );
@@ -212,12 +223,8 @@ export const usePlayHistoryStore = defineStore('playHistory', {
           console.log(`[PlayHistoryStore] Fetched ${all.length} scores (no pagination).`);
         }
       } catch (error) {
-        const axiosError = error as AxiosError<{ message?: string; error?: string }>;
-        this.error =
-          axiosError.response?.data?.message ||
-          axiosError.response?.data?.error ||
-          axiosError.message ||
-          'Failed to fetch scores.';
+        console.error('[PlayHistoryStore] Fetch error:', error);
+        this.error = error instanceof Error ? error.message : 'Failed to fetch scores.';
         this.scores = [];
       } finally {
         this.isLoadingInitial = false;

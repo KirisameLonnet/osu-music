@@ -6,8 +6,19 @@
     "androidScheme": "https"
   },
   "plugins": {
+    "SafeArea": {
+      "enabled": true,
+      "customColorsForSystemBars": true,
+      "statusBarColor": "#00000000",
+      "statusBarContent": "light",
+      "navigationBarColor": "#00000000",
+      "navigationBarContent": "light",
+      "offset": 0
+    },
     "StatusBar": {
-      "style": "DARK"
+      "style": "DARK",
+      "overlaysWebView": true,
+      "backgroundColor": "#00000000"
     },
     "SplashScreen": {
       "launchShowDuration": 3000,
@@ -26,14 +37,17 @@
     }
   },
   "ios": {
-    "contentInset": "automatic",
+    "contentInset": "never",
     "allowsLinkPreview": false,
     "handleApplicationNotifications": false,
-    "preferredContentMode": "mobile"
+    "preferredContentMode": "mobile",
+    "presentationStyle": "fullscreen"
   },
   "android": {
     "allowMixedContent": true,
     "captureInput": true,
-    "webContentsDebuggingEnabled": false
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#121218",
+    "appendUserAgent": "CapacitorApp"
   }
 }

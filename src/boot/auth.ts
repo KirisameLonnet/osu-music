@@ -2,7 +2,7 @@
 // 认证存储初始化
 
 import { boot } from 'quasar/wrappers';
-import { useAuthStore } from 'src/services/auth';
+import { useAuthStore } from 'src/stores/authStore';
 
 export default boot(async () => {
   console.log('[Boot] Initializing auth store...');

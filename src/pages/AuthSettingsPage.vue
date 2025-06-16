@@ -114,7 +114,15 @@
                 icon="verified"
                 @click="validateOAuthConfig"
                 :disable="!settingsStore.osuClientId || !settingsStore.osuClientSecret"
-                class="q-mr-sm"
+                class="q-mr-sm q-mb-sm"
+                unelevated
+              />
+              <q-btn
+                label="测试深链接"
+                color="info"
+                icon="link"
+                @click="testDeepLink"
+                class="q-mr-sm q-mb-sm"
                 unelevated
               />
               <q-btn
@@ -197,10 +205,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useQuasar, copyToClipboard } from 'quasar';
-import { useAuthStore } from 'src/services/auth';
+import { useAuthStore } from 'src/stores/authStore';
 import { useSettingsStore } from 'src/stores/settingsStore';
 import { useRouter } from 'vue-router';
-import { getPlatformService } from 'src/services/platform';
+import { getPlatformService } from 'src/services/core/platform';
 
 const $q = useQuasar();
 const authStore = useAuthStore();
@@ -381,6 +389,55 @@ Client Secret 长度: ${settingsStore.osuClientSecret?.length || 0}
       message: '复制失败，请手动复制控制台输出',
     });
     console.log(diagnosticText);
+  }
+}
+
+async function testDeepLink() {
+  $q.loading.show({ message: '测试深链接...' });
+
+  try {
+    console.log('[AuthSettings] Testing deep link functionality...');
+
+    const platformInfo = platform.getPlatformInfo();
+
+    if (platformInfo.type === 'ios' || platformInfo.type === 'android') {
+      // 在原生平台上，我们可以测试模拟一个深链接回调
+      const testUrl = 'osu-music-fusion://oauth/callback?code=test_code_12345&state=test_state';
+
+      $q.notify({
+        type: 'info',
+        message: `测试深链接 URL: ${testUrl}\n\n在 Safari 或 Chrome 中输入此 URL 来测试深链接是否工作`,
+        multiLine: true,
+        timeout: 8000,
+        actions: [
+          {
+            label: '复制测试 URL',
+            color: 'white',
+            handler: () => {
+              copyToClipboard(testUrl).then(() => {
+                $q.notify({
+                  type: 'positive',
+                  message: '测试 URL 已复制',
+                });
+              });
+            },
+          },
+        ],
+      });
+    } else {
+      $q.notify({
+        type: 'warning',
+        message: '深链接测试仅在 iOS/Android 平台上可用',
+      });
+    }
+  } catch (error) {
+    console.error('深链接测试失败:', error);
+    $q.notify({
+      type: 'negative',
+      message: `深链接测试失败: ${error}`,
+    });
+  } finally {
+    $q.loading.hide();
   }
 }
 </script>

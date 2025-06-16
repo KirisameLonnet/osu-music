@@ -1,0 +1,171 @@
+// Safe Area 最佳实践样式
+// 基于 capacitor-community/safe-area 插件的推荐用法，并增加视觉平衡功能
+
+// 1. 初始化 CSS 变量（兼容所有平台）
+:root {
+  --safe-area-inset-top: max(env(safe-area-inset-top), 0px);
+  --safe-area-inset-bottom: max(env(safe-area-inset-bottom), 0px);
+  --safe-area-inset-left: max(env(safe-area-inset-left), 0px);
+  --safe-area-inset-right: max(env(safe-area-inset-right), 0px);
+
+  // 视觉平衡的最小边距
+  --visual-balance-horizontal: 16px; // 左右最小边距
+  --visual-balance-vertical: 0px; // 上下不设置最小边距，保持 edge-to-edge
+}
+
+// 2. 背景类组件 - 延伸至屏幕物理边缘（包括刘海区域）
+.background-edge-to-edge {
+  // 完全覆盖整个屏幕，包括状态栏、刘海、导航栏区域
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important; // 动态视口高度
+
+  // 不使用任何内边距，让背景完全延伸到边缘
+  margin: 0 !important;
+  padding: 0 !important;
+
+  // 确保在最底层
+  z-index: -1;
+}
+
+// 3. 内容容器 - UI 元素自动避让所有安全区域（包含视觉平衡）
+.content-safe-area {
+  // 当 --visual-balance-vertical 为 0 时，上下保持 edge-to-edge，避免白边
+  padding-top: var(--safe-area-inset-top) !important;
+  padding-bottom: var(--safe-area-inset-bottom) !important;
+  padding-left: max(var(--safe-area-inset-left), var(--visual-balance-horizontal)) !important;
+  padding-right: max(var(--safe-area-inset-right), var(--visual-balance-horizontal)) !important;
+  box-sizing: border-box;
+}
+
+// 4. 顶部内容 - 仅避让状态栏/刘海
+.content-safe-top {
+  padding-top: var(--safe-area-inset-top) !important;
+}
+
+// 5. 底部内容 - 仅避让手势条/导航栏
+.content-safe-bottom {
+  padding-bottom: var(--safe-area-inset-bottom) !important;
+}
+
+// 6. 水平内容 - 仅避让左右圆角/缺口（包含视觉平衡）
+.content-safe-horizontal {
+  padding-left: max(var(--safe-area-inset-left), var(--visual-balance-horizontal)) !important;
+  padding-right: max(var(--safe-area-inset-right), var(--visual-balance-horizontal)) !important;
+}
+
+// 7. 垂直 Edge-to-Edge - 上下延伸，左右避让（包含视觉平衡）
+.content-vertical-edge-to-edge {
+  // 顶部和底部延伸到边缘（适用于全屏背景元素）
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+
+  // 左右避让安全区域（确保内容不被遮挡，并保持视觉平衡）
+  padding-left: max(var(--safe-area-inset-left), var(--visual-balance-horizontal)) !important;
+  padding-right: max(var(--safe-area-inset-right), var(--visual-balance-horizontal)) !important;
+  box-sizing: border-box;
+}
+
+// 8. 水平 Edge-to-Edge - 左右延伸，上下避让
+.content-horizontal-edge-to-edge {
+  // 左右延伸到边缘
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+
+  // 上下避让安全区域（不使用视觉平衡，保持真实的安全区域避让）
+  padding-top: var(--safe-area-inset-top) !important;
+  padding-bottom: var(--safe-area-inset-bottom) !important;
+  box-sizing: border-box;
+}
+
+// 9. 特殊组件样式
+
+// Header 组件 - 延伸到状态栏，内容避让
+.header-edge-to-edge {
+  // 背景延伸到状态栏
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+
+  // 内容区域避让状态栏并保持视觉平衡
+  .header-content {
+    padding-top: var(--safe-area-inset-top);
+    padding-left: max(var(--safe-area-inset-left), var(--visual-balance-horizontal));
+    padding-right: max(var(--safe-area-inset-right), var(--visual-balance-horizontal));
+  }
+}
+
+// Footer 组件 - 延伸到手势条，内容避让
+.footer-edge-to-edge {
+  // 背景延伸到手势条
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+
+  // 内容区域避让手势条并保持视觉平衡
+  .footer-content {
+    padding-bottom: var(--safe-area-inset-bottom);
+    padding-left: max(var(--safe-area-inset-left), var(--visual-balance-horizontal));
+    padding-right: max(var(--safe-area-inset-right), var(--visual-balance-horizontal));
+  }
+}
+
+// 10. 工具类 - 用于快速应用视觉平衡边距
+
+// 仅水平视觉平衡
+.visual-balance-horizontal {
+  padding-left: var(--visual-balance-horizontal) !important;
+  padding-right: var(--visual-balance-horizontal) !important;
+}
+
+// 仅垂直视觉平衡
+.visual-balance-vertical {
+  padding-top: var(--visual-balance-vertical) !important;
+  padding-bottom: var(--visual-balance-vertical) !important;
+}
+
+// 全方向视觉平衡
+.visual-balance {
+  padding: var(--visual-balance-vertical) var(--visual-balance-horizontal) !important;
+}
+
+// 11. 响应式调整
+@media (max-width: 768px) {
+  :root {
+    --visual-balance-horizontal: 12px; // 移动端减少水平边距
+    --visual-balance-vertical: 0px; // 移动端上下不设置边距，保持 edge-to-edge
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --visual-balance-horizontal: 8px; // 小屏幕进一步减少边距
+    --visual-balance-vertical: 0px; // 小屏幕上下不设置边距，保持 edge-to-edge
+  }
+}
+
+// 12. 调试辅助（开发时可启用）
+/*
+.debug-safe-area {
+  &::before {
+    content: '';
+    position: absolute;
+    top: var(--safe-area-inset-top);
+    left: var(--safe-area-inset-left);
+    right: var(--safe-area-inset-right);
+    bottom: var(--safe-area-inset-bottom);
+    border: 2px dashed #ff4081;
+    pointer-events: none;
+    z-index: 9999;
+  }
+}
+*/

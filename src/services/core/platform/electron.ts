@@ -1,4 +1,4 @@
-// src/services/platform/electron.ts
+// src/services/core/platform/electron.ts
 // Electron平台具体实现
 
 import type {

@@ -308,18 +308,37 @@ const getRepeatIcon = (): string => {
   width: 100vw;
   max-width: 100vw;
   background: linear-gradient(135deg, #0c0c0c, #1a1a1a, #2a2a2a);
-  position: absolute; // 改回 absolute，但保持页面级的固定定位
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  overflow: hidden; // 防止当前页面滚动
-  z-index: 10; // 确保在其他内容之上
+  overflow: hidden;
+  z-index: 10;
+
+  // 移动端：完全延伸到屏幕边缘，忽略安全区域
+  @media (max-width: 768px) {
+    height: 100vh !important;
+    height: 100dvh !important; // 动态视口高度
+    width: 100vw !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    // 明确忽略安全区域
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    // 确保完全覆盖
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+  }
 
   &::before {
     content: '';
     position: absolute;
-    top: -100px; // 扩展伪元素的覆盖范围
+    top: -100px;
     left: -100px;
     right: -100px;
     bottom: -100px;
@@ -332,13 +351,13 @@ const getRepeatIcon = (): string => {
 
 // 动态背景层
 .dynamic-background {
-  position: fixed; // 改为 fixed 确保覆盖整个视窗
-  top: -50px; // 扩展顶部区域
-  left: -50px; // 扩展左侧区域
-  right: -50px; // 扩展右侧区域
-  bottom: -50px; // 扩展底部区域
-  width: calc(100vw + 100px); // 明确设置宽度
-  height: calc(100vh + 100px); // 明确设置高度
+  position: fixed;
+  top: -50px;
+  left: -50px;
+  right: -50px;
+  bottom: -50px;
+  width: calc(100vw + 100px);
+  height: calc(100vh + 100px);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -346,7 +365,19 @@ const getRepeatIcon = (): string => {
   opacity: 0.7;
   z-index: 0;
   transition: all 0.5s ease;
-  transform: scale(1.1); // 额外缩放确保覆盖
+  transform: scale(1.1);
+
+  // 移动端：确保背景完全覆盖，包括安全区域
+  @media (max-width: 768px) {
+    top: -100px !important;
+    left: -100px !important;
+    right: -100px !important;
+    bottom: -100px !important;
+    width: calc(100vw + 200px) !important;
+    height: calc(100vh + 200px) !important;
+    height: calc(100dvh + 200px) !important; // 动态视口高度
+    transform: scale(1.2) !important; // 更大的缩放确保完全覆盖
+  }
 }
 
 .player-container {

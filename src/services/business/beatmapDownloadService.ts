@@ -1,4 +1,4 @@
-// src/services/beatmapDownloadService.ts
+// src/services/business/beatmapDownloadService.ts
 /**
  * Beatmap Download Service
  *
@@ -10,8 +10,9 @@
  * - 提供下载进度跟踪
  */
 import { ref } from 'vue';
-import { api as osuApi } from 'boot/axios';
-import { useAuthStore } from './auth';
+import { osuHttpService } from '../api/httpService';
+import { binaryDownloader } from '../core/platform/binaryDownloader';
+import { useAuthStore } from 'src/stores/authStore';
 import { useMusicStore, type MusicTrack } from 'src/stores/musicStore';
 
 export interface DownloadProgress {
@@ -77,11 +78,21 @@ class BeatmapDownloadService {
       // 第一步：获取 beatmapset 详细信息
       console.log(`[BeatmapDownload] Starting download: ${title}`);
 
-      const beatmapsetResponse = await osuApi.get(`/beatmapsets/${beatmapsetId}`, {
-        headers: {
-          Authorization: `Bearer ${authStore.accessToken}`,
+      const beatmapsetResponse = await osuHttpService.get<BeatmapsetData>(
+        `/beatmapsets/${beatmapsetId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${authStore.accessToken}`,
+          },
         },
-      });
+      );
+
+      console.log('[BeatmapDownload] Raw response:', beatmapsetResponse);
+      console.log('[BeatmapDownload] Response data:', beatmapsetResponse.data);
+
+      if (!beatmapsetResponse.data) {
+        throw new Error('No beatmap data received from API');
+      }
 
       const beatmapset: BeatmapsetData = beatmapsetResponse.data;
       progress.progress = 10;
@@ -143,23 +154,33 @@ class BeatmapDownloadService {
               console.log(`[BeatmapDownload] Successfully downloaded from ${source.name}`);
               break;
             } else {
-              // 浏览器环境尝试直接fetch
-              const downloadResponse = await fetch(source.url, {
-                headers: {
-                  Authorization: `Bearer ${authStore.accessToken}`,
-                },
-              });
+              // 使用专门的二进制下载器来避免 CORS 问题
+              try {
+                const downloadResult = await binaryDownloader.download({
+                  url: source.url,
+                  headers: {
+                    Authorization: `Bearer ${authStore.accessToken}`,
+                  },
+                  maxRetries: 2,
+                  timeout: 30000,
+                });
 
-              if (!downloadResponse.ok) {
+                if (downloadResult.status < 200 || downloadResult.status >= 300) {
+                  console.log(
+                    `[BeatmapDownload] ${source.name} failed: HTTP ${downloadResult.status}`,
+                  );
+                  continue;
+                }
+
+                arrayBuffer = downloadResult.data;
                 console.log(
-                  `[BeatmapDownload] ${source.name} failed: ${downloadResponse.statusText}`,
+                  `[BeatmapDownload] Successfully downloaded from ${source.name}, size: ${arrayBuffer.byteLength} bytes`,
                 );
+                break;
+              } catch (error) {
+                console.log(`[BeatmapDownload] ${source.name} failed: ${String(error)}`);
                 continue;
               }
-
-              arrayBuffer = await downloadResponse.arrayBuffer();
-              console.log(`[BeatmapDownload] Successfully downloaded from ${source.name}`);
-              break;
             }
           } else {
             // 使用公开镜像 (无需认证)
@@ -184,26 +205,28 @@ class BeatmapDownloadService {
               console.log(`[BeatmapDownload] Successfully downloaded from ${source.name}`);
               break;
             } else {
-              // 浏览器环境尝试直接fetch (可能遇到CORS)
+              // 使用专门的二进制下载器来处理 .osz 文件下载
               try {
-                const downloadResponse = await fetch(source.url, {
-                  mode: 'cors',
+                const downloadResult = await binaryDownloader.download({
+                  url: source.url,
+                  maxRetries: 2,
+                  timeout: 30000,
                 });
 
-                if (!downloadResponse.ok) {
+                if (downloadResult.status < 200 || downloadResult.status >= 300) {
                   console.log(
-                    `[BeatmapDownload] ${source.name} failed: ${downloadResponse.statusText}`,
+                    `[BeatmapDownload] ${source.name} failed: HTTP ${downloadResult.status}`,
                   );
                   continue;
                 }
 
-                arrayBuffer = await downloadResponse.arrayBuffer();
-                console.log(`[BeatmapDownload] Successfully downloaded from ${source.name}`);
-                break;
-              } catch (corsError) {
+                arrayBuffer = downloadResult.data;
                 console.log(
-                  `[BeatmapDownload] ${source.name} failed due to CORS: ${String(corsError)}`,
+                  `[BeatmapDownload] Successfully downloaded from ${source.name}, size: ${arrayBuffer.byteLength} bytes`,
                 );
+                break;
+              } catch (error) {
+                console.log(`[BeatmapDownload] ${source.name} failed: ${String(error)}`);
                 continue;
               }
             }
@@ -234,10 +257,20 @@ class BeatmapDownloadService {
 
       for (const audioFile of audioFiles) {
         try {
+          console.log(`[BeatmapDownload] Saving audio file: ${audioFile.name}`);
           const track = await this.saveAudioFile(audioFile, beatmapset, beatmapsetId);
           savedTracks.push(track);
+          console.log(`[BeatmapDownload] Audio file saved successfully: ${track.fileName}`);
         } catch (error) {
-          console.warn(`Failed to save audio file ${audioFile.name}:`, error);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(
+            `[BeatmapDownload] Failed to save audio file ${audioFile.name}:`,
+            errorMessage,
+          );
+          console.error(`[BeatmapDownload] Full error details:`, error);
+
+          // 继续尝试其他文件，但记录错误
+          progress.error = `Failed to save ${audioFile.name}: ${errorMessage}`;
         }
       }
 
@@ -369,6 +402,9 @@ class BeatmapDownloadService {
     beatmapset: BeatmapsetData,
     beatmapsetId: number,
   ): Promise<MusicTrack> {
+    const { Capacitor } = await import('@capacitor/core');
+    const { getPlatformService } = await import('src/services/core/platform');
+
     // 生成文件名：id-歌曲名-歌手或曲师.扩展名
     const title = this.sanitizeFileName(beatmapset.title_unicode || beatmapset.title);
     const artist = this.sanitizeFileName(
@@ -379,10 +415,16 @@ class BeatmapDownloadService {
     const fileName = `${beatmapsetId}-${title}-${artist}${extension}`;
 
     console.log(`[BeatmapDownload] Saving audio file as: ${fileName}`);
+    console.log(`[BeatmapDownload] Platform info:`, {
+      platform: Capacitor.getPlatform(),
+      isNative: Capacitor.isNativePlatform(),
+      hasElectron: !!window.electron?.ipcRenderer,
+    });
 
-    // 在 Electron 环境中，通过 IPC 保存文件
     let actualFilePath: string;
+
     if (window.electron?.ipcRenderer) {
+      // Electron 环境
       try {
         const result: { success: boolean; filePath?: string; error?: string } =
           await window.electron.ipcRenderer.invoke('save-audio-file', {
@@ -395,13 +437,34 @@ class BeatmapDownloadService {
         }
 
         actualFilePath = result.filePath || `osu-music/${fileName}`;
+        console.log(`[BeatmapDownload] File saved via Electron: ${actualFilePath}`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         throw new Error(`Failed to save file via Electron: ${errorMessage}`);
       }
+    } else if (Capacitor.isNativePlatform()) {
+      // Capacitor 原生环境 (iOS/Android)
+      try {
+        const platformService = getPlatformService();
+
+        // 在 iOS 上，音频文件直接保存到 Documents 根目录
+        await platformService.writeFile({
+          path: fileName,
+          data: audioFile.data,
+        });
+
+        // 获取文件的实际 URI
+        const documentsDir = await platformService.getDocumentsDirectory();
+        actualFilePath = `${documentsDir}/${fileName}`;
+
+        console.log(`[BeatmapDownload] File saved via Capacitor: ${actualFilePath}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[BeatmapDownload] Failed to save file via Capacitor:`, error);
+        throw new Error(`Failed to save file via Capacitor: ${errorMessage}`);
+      }
     } else {
-      // 在浏览器环境中，使用 File System Access API (如果支持)
-      // 或者提示用户手动下载
+      // Web 浏览器环境
       console.warn('File saving not supported in browser environment');
 
       // 创建下载链接让用户手动下载

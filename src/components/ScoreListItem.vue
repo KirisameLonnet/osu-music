@@ -165,7 +165,7 @@ import { type Score } from 'src/stores/playHistory'; // 确认路径
 import { formatDistanceToNowStrict, parseISO } from 'date-fns'; // npm install date-fns
 import { useQuasar } from 'quasar';
 import type { CSSProperties } from 'vue';
-import { useBeatmapDownloadService } from 'src/services/beatmapDownloadService';
+import { useBeatmapDownloadService } from 'src/services/business/beatmapDownloadService';
 
 const props = defineProps({
   score: {

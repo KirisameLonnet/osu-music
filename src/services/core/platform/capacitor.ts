@@ -1,4 +1,4 @@
-// src/services/platform/capacitor.ts
+// src/services/core/platform/capacitor.ts
 // Capacitor平台具体实现（iOS/Android）
 
 import { Capacitor } from '@capacitor/core';
@@ -27,7 +27,7 @@ import type {
 } from './types';
 
 export class CapacitorPlatformService implements PlatformService {
-  private osuMusicDirectory = 'OSU! Music'; // 使用更友好的文件夹名称
+  private osuMusicDirectory = 'OSU-Music'; // 使用文件系统友好的目录名
   private lifecycleListeners: (() => void)[] = [];
 
   constructor() {
@@ -157,65 +157,59 @@ export class CapacitorPlatformService implements PlatformService {
 
   private async initializeOsuMusicDirectory(): Promise<void> {
     try {
-      // 检查OSU Music目录是否存在，如果不存在则创建
-      const osuMusicPath = `${this.osuMusicDirectory}`;
+      // 在iOS上，音频文件直接放在Documents根目录
+      // 只需要创建playlists文件夹
+      console.log('[CapacitorPlatform] Initializing iOS music directories...');
 
-      console.log('[CapacitorPlatform] Initializing OSU Music directory:', osuMusicPath);
-
+      // 只创建playlists文件夹，音频文件直接放在Documents根目录
       try {
         await Filesystem.stat({
-          path: osuMusicPath,
+          path: 'playlists',
           directory: Directory.Documents,
         });
-        console.log('[CapacitorPlatform] OSU Music directory already exists');
+        console.log('[CapacitorPlatform] Playlists directory already exists');
       } catch {
         // 目录不存在，创建它
-        console.log('[CapacitorPlatform] Creating OSU Music directory...');
-        await Filesystem.mkdir({
-          path: osuMusicPath,
-          directory: Directory.Documents,
-          recursive: true,
-        });
-
-        // 创建子目录
-        await this.createOsuSubDirectories();
-        console.log('[CapacitorPlatform] OSU Music directory structure created');
+        console.log('[CapacitorPlatform] Creating playlists directory');
+        try {
+          await Filesystem.mkdir({
+            path: 'playlists',
+            directory: Directory.Documents,
+            recursive: true,
+          });
+          console.log('[CapacitorPlatform] Playlists directory created successfully');
+        } catch (mkdirError) {
+          // 如果创建失败，检查是否是因为目录已存在
+          console.warn('[CapacitorPlatform] Failed to create playlists directory:', mkdirError);
+          // 再次尝试stat，如果成功则目录实际存在
+          try {
+            await Filesystem.stat({
+              path: 'playlists',
+              directory: Directory.Documents,
+            });
+            console.log('[CapacitorPlatform] Playlists directory exists after mkdir failed');
+          } catch (finalStatError) {
+            console.error(
+              '[CapacitorPlatform] Playlists directory creation failed permanently:',
+              finalStatError,
+            );
+            throw finalStatError;
+          }
+        }
       }
+
+      // 创建说明文件在Documents根目录
+      await this.createReadmeFile();
 
       // 获取并记录实际的文件系统路径
       const documentsUri = await Filesystem.getUri({
-        path: osuMusicPath,
+        path: '',
         directory: Directory.Documents,
       });
-      console.log('[CapacitorPlatform] OSU Music directory URI:', documentsUri.uri);
+      console.log('[CapacitorPlatform] Documents directory URI:', documentsUri.uri);
     } catch (error) {
-      console.error('[CapacitorPlatform] Failed to initialize OSU Music directory:', error);
+      console.error('[CapacitorPlatform] Failed to initialize music directories:', error);
     }
-  }
-
-  private async createOsuSubDirectories(): Promise<void> {
-    const subDirs = [
-      { name: 'Music', desc: '音乐文件存储位置' },
-      { name: 'Playlists', desc: '播放列表文件' },
-      { name: 'Cache', desc: '缓存文件' },
-      { name: 'Covers', desc: '封面图片' },
-    ];
-
-    for (const subDir of subDirs) {
-      try {
-        await Filesystem.mkdir({
-          path: `${this.osuMusicDirectory}/${subDir.name}`,
-          directory: Directory.Documents,
-          recursive: true,
-        });
-        console.log(`[CapacitorPlatform] Created subdirectory: ${subDir.name}`);
-      } catch (error) {
-        console.warn(`[CapacitorPlatform] Failed to create subdirectory ${subDir.name}:`, error);
-      }
-    }
-
-    // 创建说明文件
-    await this.createReadmeFile();
   }
 
   private async createReadmeFile(): Promise<void> {
@@ -226,25 +220,24 @@ export class CapacitorPlatformService implements PlatformService {
 这是 OSU! Music 应用的文件存储目录。
 
 📁 目录结构：
-• Music/     - 存放导入的音乐文件
-• Playlists/ - 存放播放列表文件  
-• Cache/     - 临时缓存文件
-• Covers/    - 音乐封面图片
+• 音乐文件 (mp3, ogg, wav, flac, m4a) - 直接放在此目录下
+• playlists/ - 播放列表文件夹 (json格式)
 
 📱 使用说明：
 1. 可以通过"文件"应用访问这些文件
-2. 可以手动添加音乐文件到 Music 文件夹
+2. 音乐文件可以直接放在根目录下
 3. 支持的音乐格式: MP3, WAV, FLAC, OGG, M4A
+4. 播放列表文件自动保存在 playlists 文件夹
 
 ⚠️ 注意：
-- 请勿删除或修改 Playlists 文件夹中的文件
-- Cache 文件夹中的文件可以安全删除
+- 请勿删除或修改 playlists 文件夹中的文件
+- 音乐文件可以直接添加到根目录
 
 版本: ${new Date().toLocaleDateString('zh-CN')}
 `;
 
       await Filesystem.writeFile({
-        path: `${this.osuMusicDirectory}/README.txt`,
+        path: 'OSU-Music-README.txt',
         data: readmeContent,
         directory: Directory.Documents,
         encoding: Encoding.UTF8,
@@ -272,23 +265,113 @@ export class CapacitorPlatformService implements PlatformService {
 
   async writeFile(options: WriteFileOptions): Promise<void> {
     try {
-      let data: string;
-      if (typeof options.data === 'string') {
-        data = options.data;
-      } else {
-        // Convert ArrayBuffer to base64
-        const buffer = new Uint8Array(options.data);
-        data = btoa(String.fromCharCode(...buffer));
-      }
-
-      await Filesystem.writeFile({
+      console.log('[CapacitorPlatform] Writing file:', {
         path: options.path,
-        data,
-        directory: Directory.Documents,
-        encoding: options.encoding === 'base64' ? Encoding.UTF8 : Encoding.UTF8,
+        dataType: typeof options.data,
+        isArrayBuffer: options.data instanceof ArrayBuffer,
+        dataLength:
+          options.data instanceof ArrayBuffer
+            ? options.data.byteLength
+            : typeof options.data === 'string'
+              ? options.data.length
+              : 'unknown',
+        encoding: options.encoding,
       });
+
+      if (typeof options.data === 'string') {
+        // 文本数据直接写入
+        await Filesystem.writeFile({
+          path: options.path,
+          data: options.data,
+          directory: Directory.Documents,
+          encoding: options.encoding === 'base64' ? Encoding.UTF8 : Encoding.UTF8,
+        });
+        console.log('[CapacitorPlatform] Text file written successfully');
+      } else if (options.data instanceof ArrayBuffer) {
+        // 对于二进制数据，使用更高效的方法
+        console.log('[CapacitorPlatform] Writing binary data directly:', {
+          originalSize: options.data.byteLength,
+        });
+
+        // 方法1：尝试使用 Capacitor 的内置二进制处理
+        try {
+          // 将 ArrayBuffer 转换为 base64，使用更安全的方法
+          const bytes = new Uint8Array(options.data);
+          let binaryString = '';
+
+          // 分块处理避免栈溢出
+          const chunkSize = 8192; // 8KB chunks
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.slice(i, i + chunkSize);
+            binaryString += String.fromCharCode(...chunk);
+          }
+
+          const base64Data = btoa(binaryString);
+
+          console.log('[CapacitorPlatform] Base64 conversion completed:', {
+            originalSize: options.data.byteLength,
+            base64Size: base64Data.length,
+          });
+
+          await Filesystem.writeFile({
+            path: options.path,
+            data: base64Data,
+            directory: Directory.Documents,
+            encoding: Encoding.UTF8,
+          });
+
+          console.log('[CapacitorPlatform] Binary file written successfully');
+        } catch (conversionError) {
+          console.error(
+            '[CapacitorPlatform] Base64 conversion failed, trying alternative method:',
+            conversionError,
+          );
+
+          // 方法2：如果转换失败，尝试使用 FileReader（如果在支持的环境中）
+          try {
+            const blob = new Blob([options.data]);
+            const base64Data = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result as string;
+                if (!result) {
+                  reject(new Error('FileReader returned empty result'));
+                  return;
+                }
+                // 移除 data:xxx;base64, 前缀
+                const base64 = result.split(',')[1];
+                if (!base64) {
+                  reject(new Error('Failed to extract base64 data from FileReader result'));
+                  return;
+                }
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+
+            await Filesystem.writeFile({
+              path: options.path,
+              data: base64Data,
+              directory: Directory.Documents,
+              encoding: Encoding.UTF8,
+            });
+
+            console.log('[CapacitorPlatform] Binary file written successfully using FileReader');
+          } catch (fileReaderError) {
+            console.error('[CapacitorPlatform] FileReader method also failed:', fileReaderError);
+            throw new Error(`Failed to write binary file: ${fileReaderError}`);
+          }
+        }
+      } else {
+        throw new Error('Unsupported data type for file writing');
+      }
     } catch (error) {
-      console.error('[CapacitorPlatform] Write file failed:', error);
+      console.error('[CapacitorPlatform] Write file failed:', {
+        path: options.path,
+        error: error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
@@ -375,14 +458,15 @@ export class CapacitorPlatformService implements PlatformService {
   }
 
   async getDocumentsDirectory(): Promise<string> {
-    // 返回OSU Music专用目录，使用Documents目录以支持文件共享
+    // 直接返回Documents目录的路径，不包含OSU Music子目录
+    // 这样可以避免路径重复问题
     const result = await Filesystem.getUri({
-      path: this.osuMusicDirectory,
+      path: '',
       directory: Directory.Documents,
     });
 
     // 记录路径以便调试
-    console.log('[CapacitorPlatform] OSU Music Documents Directory:', result.uri);
+    console.log('[CapacitorPlatform] Base Documents Directory:', result.uri);
     return result.uri;
   }
 
@@ -449,14 +533,21 @@ export class CapacitorPlatformService implements PlatformService {
       const oauthPromise = new Promise<OAuthResult>((resolve, reject) => {
         this.oauthPromise = { resolve, reject };
 
-        // 设置30秒超时
+        // 设置60秒超时（增加超时时间）
         setTimeout(() => {
           if (this.oauthPromise) {
-            this.oauthPromise.reject(new Error('OAuth timeout'));
+            console.log('[CapacitorPlatform] OAuth timeout reached');
+            this.oauthPromise.reject(
+              new Error(
+                'OAuth timeout - no callback received within 60 seconds. Please check:\n1. Redirect URI in OSU! developer console\n2. Network connectivity\n3. Browser settings',
+              ),
+            );
             this.oauthPromise = null;
           }
-        }, 30000);
+        }, 60000);
       });
+
+      console.log('[CapacitorPlatform] Opening OAuth URL in browser...');
 
       // 使用Capacitor Browser打开OAuth页面
       await Browser.open({
@@ -466,10 +557,15 @@ export class CapacitorPlatformService implements PlatformService {
       });
 
       console.log('[CapacitorPlatform] OAuth browser opened, waiting for callback...');
+      console.log(
+        '[CapacitorPlatform] Expected callback URL should start with: osu-music-fusion://oauth/callback',
+      );
 
       // 等待深链接回调
       const result = await oauthPromise;
       this.oauthPromise = null;
+
+      console.log('[CapacitorPlatform] OAuth completed successfully');
 
       return result;
     } catch (error) {
@@ -671,27 +767,27 @@ export class CapacitorPlatformService implements PlatformService {
     }
   }
 
-  // iOS特定方法：获取OSU Music目录的完整路径
+  // iOS特定方法：获取Documents目录的完整路径
   async getOsuMusicDirectory(): Promise<string> {
     const result = await Filesystem.getUri({
-      path: this.osuMusicDirectory,
+      path: '',
       directory: Directory.Documents,
     });
     return result.uri;
   }
 
-  // iOS特定方法：确保OSU Music目录在Files app中可见
+  // iOS特定方法：确保目录在Files app中可见
   async makeOsuDirectoryVisible(): Promise<void> {
     try {
       // 在Documents目录下创建.nomedia文件以确保目录可见
       await Filesystem.writeFile({
-        path: `${this.osuMusicDirectory}/.nomedia`,
+        path: '.nomedia',
         data: '',
         directory: Directory.Documents,
         encoding: Encoding.UTF8,
       });
     } catch (error) {
-      console.warn('[CapacitorPlatform] Failed to make OSU directory visible:', error);
+      console.warn('[CapacitorPlatform] Failed to make directory visible:', error);
     }
   }
 }

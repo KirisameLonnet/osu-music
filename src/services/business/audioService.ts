@@ -1,5 +1,5 @@
-import { getPlatformService } from './platform';
-import type { PlatformService } from './platform/types';
+import { getPlatformService } from '../core/platform';
+import type { PlatformService } from '../core/platform/types';
 import type { MusicTrack } from 'src/stores/musicStore';
 
 // IPC 响应类型定义

@@ -196,8 +196,8 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted } from 'vue';
 import { useQuasar } from 'quasar';
-import { useAudioService } from '../services/audioPlayPreviewService';
-import { useBeatmapDownloadService } from 'src/services/beatmapDownloadService';
+import { useAudioService } from 'src/services/business/audioPlayPreviewService';
+import { useBeatmapDownloadService } from 'src/services/business/beatmapDownloadService';
 import { usePlaylistStore, type PlaylistTrack } from 'src/stores/playlistStore';
 import AddToPlaylistDialog from './AddToPlaylistDialog.vue';
 

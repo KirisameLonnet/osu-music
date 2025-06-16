@@ -33,6 +33,11 @@
           <p class="track-artist text-caption text-grey-6 q-mb-xs">
             {{ track.artist || 'Unknown Artist' }}
           </p>
+          <!-- 显示 beatmap ID（如果有的话） -->
+          <p v-if="beatmapId" class="beatmap-id text-caption text-blue-6 q-mb-xs">
+            <q-icon name="link" size="xs" class="q-mr-xs" />
+            Beatmap #{{ beatmapId }}
+          </p>
         </div>
 
         <!-- 底部信息 -->
@@ -135,17 +140,31 @@ const defaultCover = 'https://osu.ppy.sh/images/layout/beatmaps/default-bg.png';
 
 // 智能封面 URL 生成
 const smartCoverUrl = computed(() => {
+  console.log('[MusicCard] Generating cover URL for track:', {
+    title: props.track.title,
+    artist: props.track.artist,
+    id: props.track.id,
+    album: props.track.album,
+    coverUrl: props.track.coverUrl,
+    fileName: props.track.fileName,
+    extractedBeatmapId: beatmapId.value,
+  });
+
   // 如果有 coverUrl，直接使用
   if (props.track.coverUrl) {
+    console.log('[MusicCard] Using existing coverUrl:', props.track.coverUrl);
     return props.track.coverUrl;
   }
 
-  // 尝试从 beatmapset ID 生成封面 URL
-  if (props.track.id && props.track.id !== 'unknown') {
-    return `https://assets.ppy.sh/beatmaps/${props.track.id}/covers/card.jpg`;
+  // 尝试从提取的 beatmap ID 生成封面 URL
+  if (beatmapId.value) {
+    const coverUrl = `https://assets.ppy.sh/beatmaps/${beatmapId.value}/covers/card.jpg`;
+    console.log('[MusicCard] Generated cover URL from beatmapId:', coverUrl);
+    return coverUrl;
   }
 
   // 使用默认封面
+  console.log('[MusicCard] Using default cover for track:', props.track.title);
   return defaultCover;
 });
 
@@ -153,7 +172,24 @@ const smartCoverUrl = computed(() => {
 const isInFavorites = computed(() => {
   const favPlaylist = playlistStore.defaultPlaylist;
   if (!favPlaylist) return false;
+
+  if (beatmapId.value) {
+    return favPlaylist.tracks.some((t) => t.beatmapsetId === beatmapId.value);
+  }
+
+  // 回退到使用 track ID
   return favPlaylist.tracks.some((t) => t.beatmapsetId === Number(props.track.id));
+});
+
+// 提取 beatmap ID 的计算属性
+const beatmapId = computed(() => {
+  if (props.track.album && props.track.album.includes('osu! Beatmap #')) {
+    const beatmapIdMatch = props.track.album.match(/osu! Beatmap #(\d+)/);
+    if (beatmapIdMatch && beatmapIdMatch[1]) {
+      return parseInt(beatmapIdMatch[1], 10);
+    }
+  }
+  return null;
 });
 
 const coverSrc = ref(smartCoverUrl.value);
@@ -162,26 +198,38 @@ const onImageError = (event: Event) => {
   const img = event.target as HTMLImageElement;
   const currentSrc = img.src;
 
-  // 如果当前不是默认封面且还没尝试过其他尺寸
-  if (currentSrc !== defaultCover && props.track.id && props.track.id !== 'unknown') {
+  console.log('[MusicCard] Image error for track:', props.track.title, 'currentSrc:', currentSrc);
+
+  // 如果当前不是默认封面且有 beatmap ID
+  if (currentSrc !== defaultCover && beatmapId.value) {
     // 尝试其他封面尺寸
     if (currentSrc.includes('/card.jpg')) {
       // 尝试 list 尺寸
-      const listUrl = `https://assets.ppy.sh/beatmaps/${props.track.id}/covers/list.jpg`;
+      const listUrl = `https://assets.ppy.sh/beatmaps/${beatmapId.value}/covers/list.jpg`;
+      console.log('[MusicCard] Trying list cover:', listUrl);
       img.src = listUrl;
       coverSrc.value = listUrl;
       return;
     } else if (currentSrc.includes('/list.jpg')) {
       // 尝试 cover 尺寸
-      const coverUrl = `https://assets.ppy.sh/beatmaps/${props.track.id}/covers/cover.jpg`;
+      const coverUrl = `https://assets.ppy.sh/beatmaps/${beatmapId.value}/covers/cover.jpg`;
+      console.log('[MusicCard] Trying cover size:', coverUrl);
       img.src = coverUrl;
       coverSrc.value = coverUrl;
+      return;
+    } else if (currentSrc.includes('/cover.jpg')) {
+      // 尝试 slimcover 尺寸
+      const slimcoverUrl = `https://assets.ppy.sh/beatmaps/${beatmapId.value}/covers/slimcover.jpg`;
+      console.log('[MusicCard] Trying slimcover:', slimcoverUrl);
+      img.src = slimcoverUrl;
+      coverSrc.value = slimcoverUrl;
       return;
     }
   }
 
   // 最后使用默认封面
   if (currentSrc !== defaultCover) {
+    console.log('[MusicCard] Using default cover for:', props.track.title);
     img.src = defaultCover;
     coverSrc.value = defaultCover;
   }
@@ -189,8 +237,11 @@ const onImageError = (event: Event) => {
 
 // 转换为播放列表歌曲格式
 const convertToPlaylistTrack = (track: MusicTrack): Omit<PlaylistTrack, 'addedAt'> => {
+  // 使用提取的 beatmap ID 或回退到 track ID
+  const trackBeatmapId = beatmapId.value || Number(track.id) || 0;
+
   return {
-    beatmapsetId: Number(track.id) || 0,
+    beatmapsetId: trackBeatmapId,
     title: track.title,
     artist: track.artist || 'Unknown Artist',
     duration: track.duration || 0,

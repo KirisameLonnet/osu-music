@@ -1,4 +1,4 @@
-// src/services/platform/types.ts
+// src/services/core/platform/types.ts
 // 统一的跨平台接口定义
 
 export enum PlatformType {
