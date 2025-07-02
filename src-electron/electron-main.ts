@@ -242,9 +242,10 @@ async function createWindow() {
     height: 800,
     useContentSize: true,
     frame: false, // 创建无边框窗口 - 这会完全隐藏标题栏和红绿灯按钮
+    show: false, // 先隐藏窗口，等加载完成后再显示
     webPreferences: {
       contextIsolation: true,
-      webSecurity: false, // 禁用 web 安全限制，允许加载本地文件
+      webSecurity: process.env.NODE_ENV === 'production', // 生产环境启用安全限制
       // More info: https://v2.quasar.dev/quasar-cli-vite/developing-electron-apps/electron-preload-script
       preload: path.resolve(
         currentDir,
@@ -258,14 +259,32 @@ async function createWindow() {
 
   // Windows 特定优化
   if (process.platform === 'win32') {
-    // Windows 下启用更好的字体渲染
-    windowOptions.webPreferences = {
-      ...windowOptions.webPreferences,
-      // 禁用节点集成以提高安全性和稳定性
-      nodeIntegration: false,
-      // 启用实验性功能以改善性能
-      experimentalFeatures: true,
-    };
+    // Windows ARM64 特殊处理
+    if (process.arch === 'arm64' || process.env.ELECTRON_BUILDER_ARCH === 'arm64') {
+      // ARM64 特定优化：更保守的设置以提高兼容性
+      windowOptions.webPreferences = {
+        ...windowOptions.webPreferences,
+        nodeIntegration: false,
+        // 禁用一些可能在 ARM64 上有问题的实验性功能
+        experimentalFeatures: false,
+        // 强制软件渲染以避免 GPU 兼容性问题
+        offscreen: false,
+      };
+      
+      // 禁用硬件加速以提高 ARM64 兼容性
+      if (!app.isReady()) {
+        app.disableHardwareAcceleration();
+      }
+      
+      console.log('🔧 [Windows ARM64] Applied ARM64-specific optimizations');
+    } else {
+      // x64 优化设置
+      windowOptions.webPreferences = {
+        ...windowOptions.webPreferences,
+        nodeIntegration: false,
+        experimentalFeatures: true,
+      };
+    }
 
     if (process.env.NODE_ENV === 'development') {
       console.log('🔧 [Windows Debug] Applied Windows-specific optimizations');
@@ -273,6 +292,22 @@ async function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+
+  // 窗口加载完成后显示，避免白屏闪烁
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      
+      // ARM64 特定：延迟一点确保渲染稳定
+      if (process.platform === 'win32' && (process.arch === 'arm64' || process.env.ELECTRON_BUILDER_ARCH === 'arm64')) {
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.focus();
+          }
+        }, 500);
+      }
+    }
+  });
 
   if (process.env.DEV) {
     await mainWindow.loadURL(process.env.APP_URL);

@@ -1,0 +1,23 @@
+# Windows-specific npm configuration for cross-platform development
+# This file preserves macOS node_modules while enabling Windows development
+
+# pnpm-related options (inherited from main .npmrc)
+shamefully-hoist=true
+strict-peer-dependencies=false
+resolution-mode=highest
+
+# Windows-specific configurations
+target_arch=x64
+target_platform=win32
+build_from_source=false
+
+# Electron-specific
+runtime=electron
+disturl=https://electronjs.org/headers
+
+# Cache directory (Windows-specific)
+cache=.npm-cache-win
+
+# Prefer pre-built binaries when available
+prefer_offline=false
+prefer_online=true

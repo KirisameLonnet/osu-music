@@ -1,0 +1,84 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Windows: Start Electron Dev",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev:electron:win"],
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": ["$tsc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "options": {
+        "env": {
+          "ELECTRON_IS_DEV": "1",
+          "NODE_ENV": "development"
+        }
+      }
+    },
+    {
+      "label": "Windows: Start Web Dev",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev"],
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": ["$tsc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "options": {
+        "env": {
+          "NODE_ENV": "development"
+        }
+      }
+    },
+    {
+      "label": "Windows: Build Electron x64",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "build:electron:win"],
+      "group": "build",
+      "isBackground": false,
+      "problemMatcher": ["$tsc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": true
+      }
+    },
+    {
+      "label": "Windows: Rebuild Native Modules",
+      "type": "shell",
+      "command": "npm",
+      "args": ["rebuild"],
+      "group": "build",
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": true
+      }
+    }
+  ]
+}

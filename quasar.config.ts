@@ -98,7 +98,9 @@ export default configure((ctx) => {
     // Full list of options: https://v2.quasar.dev/quasar-cli-vite/quasar-config-file#devserver
     devServer: {
       // https: true,
-      open: true, // opens browser window automatically
+      host: '0.0.0.0', // 允许网络访问，支持跨平台调试
+      port: 9000, // 指定端口
+      open: ctx.modeName !== 'electron', // 只在非 electron 模式下自动打开浏览器
       proxy: {
         '/osu-api': {
           target: 'https://osu.ppy.sh/api/v2',
@@ -213,15 +215,15 @@ export default configure((ctx) => {
         name: 'osu-music',
         appVersion: '0.0.1',
 
-        // 明确指定架构 - 针对 Windows AMD64
-        arch: 'x64', // 强制使用 x64 架构 (AMD64)
+        // 动态架构支持 - 支持 x64 和 arm64
+        arch: process.env.ELECTRON_BUILDER_ARCH || 'x64',
         platform: 'win32', // 针对 Windows 平台
 
         // 图标配置
         icon: 'src-electron/icons/icon', // 不需要扩展名，packager会自动选择
 
-        // 输出目录
-        out: 'dist/electron',
+        // 输出目录 - 为不同架构使用不同目录
+        out: `dist/electron-${process.env.ELECTRON_BUILDER_ARCH || 'x64'}`,
 
         // 忽略的文件/目录
         ignore: [
@@ -230,6 +232,17 @@ export default configure((ctx) => {
           /node_modules\/.*\/tests/,
           /node_modules\/.*\/\.git/,
         ],
+
+        // Windows ARM64 特定优化
+        ...(process.env.ELECTRON_BUILDER_ARCH === 'arm64' && {
+          // 禁用 asar 打包以避免 ARM64 兼容性问题
+          asar: false,
+          // 添加额外的下载镜像以提高 ARM64 二进制文件下载成功率
+          download: {
+            cacheRoot: 'dist/.electron-download-cache',
+            mirror: 'https://npm.taobao.org/mirrors/electron/',
+          },
+        }),
 
         // 跨平台编译设置
         // win32 特定设置
@@ -293,11 +306,11 @@ export default configure((ctx) => {
           target: [
             {
               target: 'nsis',
-              arch: ['x64'],
+              arch: ['x64', 'arm64'], // 支持 x64 和 ARM64
             },
             {
               target: 'portable',
-              arch: ['x64'],
+              arch: ['x64', 'arm64'], // 支持 x64 和 ARM64
             },
           ],
         },

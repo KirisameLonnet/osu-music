@@ -8,6 +8,7 @@ result
 
 # Node.js dependencies
 node_modules
+node_modules_*
 package-lock.json
 yarn.lock
 .npm-global

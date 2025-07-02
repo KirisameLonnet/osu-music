@@ -135,7 +135,21 @@ osu! Music 是一个开源项目，我们非常欢迎有兴趣的开发者加入
    yarn install
    ```
 
-3. **启动开发环境**:
+3. **设置架构特定的依赖 (可选)**:
+
+   为了支持不同架构的原生模块，你可以设置架构特定的 `node_modules`：
+
+   ```bash
+   # 自动检测并设置当前架构
+   npm run setup-arch
+
+   # Windows 用户也可以使用 PowerShell 脚本
+   npm run setup-arch:win
+   ```
+
+   这将为你的架构（如 Windows ARM64、macOS ARM64 等）创建独立的依赖目录。详情请查看 [架构设置文档](docs/ARCHITECTURE_SETUP.md)。
+
+4. **启动开发环境**:
 
    ```bash
    # 启动 Electron 开发模式
@@ -144,7 +158,7 @@ osu! Music 是一个开源项目，我们非常欢迎有兴趣的开发者加入
    quasar dev -m electron
    ```
 
-4. **构建生产版本**:
+5. **构建生产版本**:
    ```bash
    # 构建 Electron 应用
    npm run build:electron
