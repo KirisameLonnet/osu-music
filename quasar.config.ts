@@ -306,7 +306,7 @@ export default configure((ctx) => {
           target: [
             {
               target: 'nsis',
-              arch: ['x64', 'arm64'], // 支持 x64 和 ARM64
+              arch: ['x64', 'arm64'],
             },
             {
               target: 'portable',
