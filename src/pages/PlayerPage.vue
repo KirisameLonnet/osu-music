@@ -175,10 +175,13 @@ const repeatMode = computed(() => musicStore.repeatMode);
 const currentTime = computed(() => musicStore.currentTime);
 const duration = computed(() => musicStore.duration);
 const hasPrevious = computed(
-  () => musicStore.currentPlaylist && musicStore.currentPlaylist.tracks.length > 1,
+  () => musicStore.playQueue.length > 0 && musicStore.currentQueueIndex > 0,
 );
 const hasNext = computed(
-  () => musicStore.currentPlaylist && musicStore.currentPlaylist.tracks.length > 1,
+  () =>
+    musicStore.playQueue.length > 0 &&
+    (musicStore.currentQueueIndex < musicStore.playQueue.length - 1 ||
+      musicStore.repeatMode === 'all'),
 );
 
 // 音量图标计算

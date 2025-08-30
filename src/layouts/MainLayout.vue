@@ -231,7 +231,7 @@ function handleRemoveFromQueue(index: number) {
 }
 
 function handleClearQueue() {
-  musicStore.clearPlayQueue();
+  musicStore.clearPlayQueue({ keepCurrent: true });
 }
 
 // 红绿灯区域鼠标事件处理（所有平台都启用）

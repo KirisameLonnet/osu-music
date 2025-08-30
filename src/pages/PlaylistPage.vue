@@ -48,10 +48,6 @@
                   <q-icon name="music_note" size="16px" />
                   {{ playlist.tracks?.length || 0 }} tracks
                 </span>
-                <span class="stat-item" v-if="playlistDuration">
-                  <q-icon name="schedule" size="16px" />
-                  {{ formatDuration(playlistDuration) }}
-                </span>
                 <span class="stat-item" v-if="playlist.createdAt">
                   <q-icon name="event" size="16px" />
                   {{ formatDate(playlist.createdAt) }}
@@ -184,7 +180,6 @@
             <div class="track-title">Title</div>
             <div class="track-artist">Artist</div>
             <div class="track-album">Beatmap ID</div>
-            <div class="track-duration">Duration</div>
             <div class="track-actions"></div>
           </div>
 
@@ -212,7 +207,6 @@
             </div>
             <div class="track-artist">{{ track.artist || 'Unknown Artist' }}</div>
             <div class="track-album">{{ track.beatmapsetId || 'Unknown' }}</div>
-            <div class="track-duration">{{ formatDuration(track.duration) }}</div>
             <div class="track-actions">
               <q-btn
                 @click="removeTrackFromPlaylist(index)"
@@ -345,11 +339,6 @@ const editForm = ref({
 const tagsInput = ref('');
 
 // Computed
-const playlistDuration = computed(() => {
-  if (!playlist.value?.tracks?.length) return 0;
-  return playlist.value.tracks.reduce((total, track) => total + (track.duration || 0), 0);
-});
-
 const playlistCoverUrl = computed(() => {
   // 使用第一首歌的封面作为播放列表封面
   if (playlist.value?.tracks?.length) {
@@ -464,49 +453,40 @@ const shufflePlaylist = () => {
 
 const playTrack = (track: Track) => {
   if (!playlist.value) return;
-
-  // 使用增强的 findTrackByBeatmapsetId 方法查找实际音频文件
-  const musicTracks: MusicTrack[] = playlist.value.tracks
-    .map((t) => musicStore.findTrackByBeatmapsetId(t.beatmapsetId))
-    .filter((t) => t !== null) as MusicTrack[];
-
-  if (musicTracks.length === 0) {
-    $q.notify({
-      message: 'No audio files found for this playlist',
-      icon: 'warning',
-      color: 'warning',
-    });
+  // 查找该 track 对应的实际 MusicTrack
+  const musicTrack = musicStore.findTrackByBeatmapsetId(track.beatmapsetId);
+  if (!musicTrack) {
+    $q.notify({ message: 'Audio file not found', icon: 'warning', color: 'warning' });
     return;
   }
-
-  // 找到点击的歌曲在原始列表中的索引
-  const originalTrackIndex = playlist.value.tracks.findIndex(
-    (t) => t.beatmapsetId === track.beatmapsetId,
-  );
-
-  // 在找到的音频文件中查找对应的歌曲索引
-  let trackIndex = 0;
-  if (originalTrackIndex >= 0) {
-    // 计算在过滤后的音频文件列表中的实际索引
-    const tracksBeforeTarget = playlist.value.tracks.slice(0, originalTrackIndex);
-    trackIndex = tracksBeforeTarget.filter(
-      (t) => musicStore.findTrackByBeatmapsetId(t.beatmapsetId) !== null,
-    ).length;
-  }
-
-  // 设置播放队列并从指定歌曲开始播放
-  musicStore.setPlayQueue(musicTracks, trackIndex);
-
-  const musicTrack = musicTracks[trackIndex];
-  if (musicTrack) {
+  // 如果当前队列已经是此歌单的曲目集合，则仅替换当前索引
+  const inQueueIndex = musicStore.playQueue.findIndex((t) => t.id === musicTrack.id);
+  if (inQueueIndex !== -1) {
+    musicStore.currentQueueIndex = inQueueIndex;
     musicStore.playTrack(musicTrack);
+  } else {
+    // 否则仍按原逻辑构建（过滤某些缺失音频的情况）
+    const musicTracks: MusicTrack[] = playlist.value.tracks
+      .map((t) => musicStore.findTrackByBeatmapsetId(t.beatmapsetId))
+      .filter((t) => t !== null) as MusicTrack[];
+    const originalTrackIndex = playlist.value.tracks.findIndex(
+      (t) => t.beatmapsetId === track.beatmapsetId,
+    );
+    let trackIndex = 0;
+    if (originalTrackIndex >= 0) {
+      const tracksBeforeTarget = playlist.value.tracks.slice(0, originalTrackIndex);
+      trackIndex = tracksBeforeTarget.filter(
+        (t) => musicStore.findTrackByBeatmapsetId(t.beatmapsetId) !== null,
+      ).length;
+    }
+    musicStore.setPlayQueue(musicTracks, trackIndex);
+    const candidate = musicTracks[trackIndex];
+    if (candidate !== undefined) {
+      // candidate 经过显式判空后被收窄为 MusicTrack
+      musicStore.playTrack(candidate);
+    }
   }
-
-  $q.notify({
-    message: `Playing "${track.title}"`,
-    icon: 'play_arrow',
-    color: 'positive',
-  });
+  $q.notify({ message: `Playing "${track.title}"`, icon: 'play_arrow', color: 'positive' });
 };
 
 const addTracksToPlaylist = () => {
@@ -665,13 +645,6 @@ const downloadPlaylist = () => {
 
 const goBack = () => {
   router.go(-1);
-};
-
-const formatDuration = (seconds?: number): string => {
-  if (!seconds) return '--:--';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
 const formatDate = (date: string | Date): string => {
@@ -966,7 +939,7 @@ onMounted(() => {
 
   .tracks-list-header {
     display: grid;
-    grid-template-columns: 3rem 1fr 200px 200px 80px 60px;
+    grid-template-columns: 3rem 1fr 200px 200px 60px;
     gap: 1rem;
     padding: 0.5rem 1rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -977,7 +950,7 @@ onMounted(() => {
     letter-spacing: 0.05em;
 
     @media (max-width: 1024px) {
-      grid-template-columns: 3rem 1fr 150px 80px 60px;
+      grid-template-columns: 3rem 1fr 150px 60px;
 
       .track-album {
         display: none;
@@ -985,7 +958,7 @@ onMounted(() => {
     }
 
     @media (max-width: 768px) {
-      grid-template-columns: 3rem 1fr 80px 60px;
+      grid-template-columns: 3rem 1fr 60px;
 
       .track-artist {
         display: none;
@@ -995,7 +968,7 @@ onMounted(() => {
 
   .track-item {
     display: grid;
-    grid-template-columns: 3rem 1fr 200px 200px 80px 60px;
+    grid-template-columns: 3rem 1fr 200px 200px 60px;
     gap: 1rem;
     padding: 0.5rem 1rem;
     border-radius: 8px;
@@ -1004,7 +977,7 @@ onMounted(() => {
     cursor: pointer;
 
     @media (max-width: 1024px) {
-      grid-template-columns: 3rem 1fr 150px 80px 60px;
+      grid-template-columns: 3rem 1fr 150px 60px;
 
       .track-album {
         display: none;
@@ -1012,7 +985,7 @@ onMounted(() => {
     }
 
     @media (max-width: 768px) {
-      grid-template-columns: 3rem 1fr 80px 60px;
+      grid-template-columns: 3rem 1fr 60px;
 
       .track-artist {
         display: none;
@@ -1065,8 +1038,7 @@ onMounted(() => {
     }
 
     .track-artist,
-    .track-album,
-    .track-duration {
+    .track-album {
       display: flex;
       align-items: center;
       font-size: 0.85rem;

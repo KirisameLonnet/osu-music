@@ -24,15 +24,6 @@
         <div class="col-12 col-sm-6 col-md-3">
           <q-card flat bordered class="stat-card">
             <q-card-section class="text-center">
-              <q-icon name="schedule" size="2rem" color="secondary" />
-              <div class="text-h6 q-mt-sm">{{ musicStore.totalDurationMinutes }}</div>
-              <div class="text-caption text-grey-6">Minutes</div>
-            </q-card-section>
-          </q-card>
-        </div>
-        <div class="col-12 col-sm-6 col-md-3">
-          <q-card flat bordered class="stat-card">
-            <q-card-section class="text-center">
               <q-icon name="play_arrow" size="2rem" color="positive" />
               <div class="text-h6 q-mt-sm">{{ musicStore.isPlaying ? '1' : '0' }}</div>
               <div class="text-caption text-grey-6">Playing</div>
@@ -210,7 +201,6 @@
 
             <q-item-section side>
               <div class="row items-center q-gutter-sm">
-                <span class="text-caption text-grey-6">{{ formatDuration(track.duration) }}</span>
                 <q-btn
                   flat
                   round
@@ -448,89 +438,47 @@ const scanMusic = async () => {
 };
 
 const playTrack = (track: MusicTrack) => {
-  // 设置当前播放列表为所有过滤后的音轨
-  const playlist = {
-    id: 'all-music',
-    name: 'All Music',
-    tracks: filteredTracks.value,
-  };
-
-  musicStore.setCurrentPlaylist(playlist);
-  musicStore.playTrack(track);
-
-  $q.notify({
-    message: `Now playing: ${track.title}`,
-    icon: 'play_arrow',
-    color: 'positive',
-  });
+  const trackIndex = filteredTracks.value.findIndex((t) => t.id === track.id);
+  const startIndex = trackIndex >= 0 ? trackIndex : 0;
+  musicStore.setPlayQueue(filteredTracks.value, startIndex);
+  const target = filteredTracks.value[startIndex];
+  if (target) {
+    musicStore.playTrack(target);
+    $q.notify({ message: `Now playing: ${target.title}`, icon: 'play_arrow', color: 'positive' });
+  }
 };
 
-const shuffleAll = () => {
-  if (musicStore.totalTracks === 0) return;
-
-  // 启用随机模式
-  musicStore.shuffleMode = 'on';
-
-  const randomTrack = musicStore.tracks[Math.floor(Math.random() * musicStore.tracks.length)];
-  if (randomTrack) {
-    playTrack(randomTrack);
-
-    $q.notify({
-      message: 'Shuffle mode activated',
-      icon: 'shuffle',
-      color: 'info',
-    });
+// 新增：替换当前播放歌曲而不改变队列其他部分
+const replaceCurrentTrackInQueue = (track: MusicTrack) => {
+  if (!musicStore.playQueue.length) {
+    // 如果队列为空，行为等同 playTrack
+    playTrack(track);
+    return;
+  }
+  const idx = musicStore.playQueue.findIndex((t) => t.id === track.id);
+  if (idx !== -1) {
+    musicStore.currentQueueIndex = idx;
+    musicStore.playTrack(track);
+  } else {
+    // 用当前过滤集合重建队列并定位
+    const trackIndex = filteredTracks.value.findIndex((t) => t.id === track.id);
+    const startIndex = trackIndex >= 0 ? trackIndex : 0;
+    musicStore.setPlayQueue(filteredTracks.value, startIndex);
+    const target = filteredTracks.value[startIndex];
+    if (target) musicStore.playTrack(target);
   }
 };
 
 const addTrackToQueue = (track: MusicTrack) => {
-  console.log(`[AllMusicPage] Adding track to queue: ${track.title}`);
-
-  // 检查当前是否有音乐在播放
-  const wasEmpty = !musicStore.currentTrack;
-
-  musicStore.addToQueue(track);
-
-  // 如果之前没有音乐在播放，现在立即开始播放
-  if (wasEmpty) {
-    musicStore.playTrack(track);
-    $q.notify({
-      message: `Now playing: ${track.title}`,
-      icon: 'play_arrow',
-      color: 'positive',
-    });
-  } else {
-    $q.notify({
-      message: `"${track.title}" added to queue`,
-      icon: 'queue',
-      color: 'positive',
-    });
-  }
+  // 需求调整：点击添加即替换当前正在播放
+  replaceCurrentTrackInQueue(track);
+  $q.notify({ message: `Switched to: ${track.title}`, icon: 'play_arrow', color: 'positive' });
 };
 
 const playTrackNext = (track: MusicTrack) => {
-  console.log(`[AllMusicPage] Setting track to play next: ${track.title}`);
-
-  // 检查当前是否有音乐在播放
-  const wasEmpty = !musicStore.currentTrack;
-
-  if (wasEmpty) {
-    // 如果没有音乐在播放，直接播放这首歌
-    musicStore.playTrack(track);
-    $q.notify({
-      message: `Now playing: ${track.title}`,
-      icon: 'play_arrow',
-      color: 'positive',
-    });
-  } else {
-    // 如果有音乐在播放，插入到队列下一首
-    musicStore.addToQueueNext(track);
-    $q.notify({
-      message: `"${track.title}" will play next`,
-      icon: 'skip_next',
-      color: 'secondary',
-    });
-  }
+  // 需求调整：也直接替换当前播放
+  replaceCurrentTrackInQueue(track);
+  $q.notify({ message: `Switched to: ${track.title}`, icon: 'play_arrow', color: 'positive' });
 };
 
 // 删除歌曲处理函数
@@ -665,6 +613,18 @@ const logLibraryData = () => {
   });
 };
 
+// 恢复 shuffleAll 功能：随机选择并直接播放（保持替换语义）
+const shuffleAll = () => {
+  if (musicStore.totalTracks === 0) return;
+  const randomTrack = filteredTracks.value.length
+    ? filteredTracks.value[Math.floor(Math.random() * filteredTracks.value.length)]
+    : musicStore.tracks[Math.floor(Math.random() * musicStore.tracks.length)];
+  if (randomTrack) {
+    playTrack(randomTrack);
+    $q.notify({ message: 'Shuffle play', icon: 'shuffle', color: 'info' });
+  }
+};
+
 // 转换为播放列表歌曲格式
 const convertToPlaylistTrack = (track: MusicTrack): Omit<PlaylistTrack, 'addedAt'> => {
   return {
@@ -732,14 +692,6 @@ const openAddToPlaylistDialog = (track: MusicTrack) => {
       track: track,
     },
   });
-};
-
-const formatDuration = (seconds?: number): string => {
-  if (!seconds) return '--:--';
-
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 // 智能封面 URL 生成 - 与 MusicCard.vue 保持一致

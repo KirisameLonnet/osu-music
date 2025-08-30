@@ -72,7 +72,9 @@
                 dense
                 size="sm"
                 icon="remove"
-                @click.stop="$emit('removeFromQueue', index)"
+                @click.stop="
+                  $emit('removeFromQueue', index + (currentIndex !== -1 ? currentIndex + 1 : 0))
+                "
                 class="remove-btn"
               />
             </div>
@@ -114,20 +116,19 @@ defineEmits<{
 const isVisible = ref(props.visible);
 const isOpen = ref(false);
 
+// 当前播放索引（在整个队列中的位置）
+const currentIndex = computed(() => {
+  if (!props.currentTrack) return -1;
+  return props.queue.findIndex((track) => track.id === props.currentTrack?.id);
+});
+
 // 计算属性
 const upNext = computed(() => {
   if (!props.currentTrack || props.queue.length === 0) {
     return props.queue;
   }
-
-  // 找到当前播放歌曲的索引
-  const currentIndex = props.queue.findIndex((track) => track.id === props.currentTrack?.id);
-  if (currentIndex === -1) {
-    return props.queue;
-  }
-
-  // 返回当前歌曲之后的队列
-  return props.queue.slice(currentIndex + 1);
+  if (currentIndex.value === -1) return props.queue;
+  return props.queue.slice(currentIndex.value + 1);
 });
 
 // 监听 visible 变化

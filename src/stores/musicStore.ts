@@ -295,7 +295,13 @@ export const useMusicStore = defineStore('music', () => {
     }
   };
 
-  const clearPlayQueue = () => {
+  const clearPlayQueue = (options?: { keepCurrent?: boolean }) => {
+    if (options?.keepCurrent && currentTrack.value) {
+      playQueue.value = [currentTrack.value];
+      originalQueue.value = [currentTrack.value];
+      currentQueueIndex.value = 0;
+      return; // 保留正在播放
+    }
     playQueue.value = [];
     originalQueue.value = [];
     currentQueueIndex.value = 0;
