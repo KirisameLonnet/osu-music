@@ -1,0 +1,105 @@
+{
+  "log": {
+    "level": "error"
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "cloudflare",
+        "address": "tcp://1.1.1.1"
+      },
+      {
+        "tag": "alidns",
+        "address": "223.5.5.5",
+        "detour": "direct-out"
+      }
+    ],
+    "rules": [
+      {
+        "rule_set": "geosite-cn",
+        "server": "alidns",
+        "disable_cache": true
+      }
+    ],
+    "strategy": "ipv4_only",
+    "final": "cloudflare"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "address": [
+        "172.31.254.72/30"
+      ],
+      "sniff": true,
+      "auto_route": true,
+      "strict_route": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "shadowtls",
+      "tag": "st-out",
+      "password": "mHCNggz032tkp4untpN03g==",
+      "server": "140.235.37.155",
+      "server_port": 8443,
+      "version": 3,
+      "tls": {
+        "enabled": true,
+        "server_name": "www.bing.com"
+      }
+    },
+    {
+      "type": "shadowsocks",
+      "tag": "ss-out",
+      "method": "2022-blake3-aes-128-gcm",
+      "password": "pF3aZQX2AulN9Ja1VjNS8w==",
+      "udp_over_tcp": {
+        "enabled": true,
+        "version": 2
+      },
+      "detour": "st-out"
+    },
+    {
+      "type": "direct",
+      "tag": "direct-out"
+    },
+    {
+      "type": "dns",
+      "tag": "dns-out"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "protocol": "dns",
+        "outbound": "dns-out"
+      },
+      {
+        "rule_set": "geoip-cn",
+        "outbound": "direct-out"
+      },
+      {
+        "rule_set": "geosite-cn",
+        "outbound": "direct-out"
+      }
+    ],
+    "final": "ss-out",
+    "auto_detect_interface": true,
+    "rule_set": [
+      {
+        "tag": "geoip-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set/geoip-cn.srs"
+      },
+      {
+        "tag": "geosite-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-cn.srs"
+      }
+    ]
+  }
+}
+
