@@ -114,12 +114,7 @@ export const usePlayHistoryStore = defineStore('playHistory', {
      * 获取指定用户最近的游玩记录。
      * 如果不提供 userId，则尝试获取当前已登录用户的记录。
      */
-    async fetchScores(
-      userId?: number,
-      mode: string = 'osu',
-      _limit?: number, // 不再使用
-      includeFails: boolean = true,
-    ) {
+    async fetchScores(userId?: number, mode: string = 'osu', includeFails: boolean = true) {
       this.isLoadingInitial = true;
       this.scores = [];
       this.nextCursorParams = null;

@@ -93,6 +93,16 @@
         </div>
 
         <div class="additional-controls">
+          <!-- 收藏按钮 -->
+          <q-btn
+            round
+            flat
+            :icon="isCurrentFavorite ? 'favorite' : 'favorite_border'"
+            :color="isCurrentFavorite ? 'red' : 'grey-6'"
+            @click="toggleFavorite"
+            class="q-mr-sm"
+          />
+
           <q-btn
             round
             flat
@@ -139,6 +149,19 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useMusicStore } from 'src/stores/musicStore';
 
 const musicStore = useMusicStore();
+
+// Favorites logic
+const isCurrentFavorite = computed(() => {
+  const track = musicStore.currentTrack;
+  return track ? musicStore.isFavorite(track.id) : false;
+});
+
+const toggleFavorite = () => {
+  const track = musicStore.currentTrack;
+  if (track) {
+    musicStore.toggleFavorite(track);
+  }
+};
 
 // 保存原始的 overflow 样式
 let originalBodyOverflow = '';

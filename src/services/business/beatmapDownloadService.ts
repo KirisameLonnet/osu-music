@@ -30,6 +30,7 @@ interface BeatmapsetData {
   artist: string;
   artist_unicode?: string;
   creator: string;
+  bpm?: number;
   covers?: {
     card?: string;
     cover?: string;
@@ -489,6 +490,7 @@ class BeatmapDownloadService {
       artist: beatmapset.artist_unicode || beatmapset.artist,
       album: `osu! - ${beatmapset.creator}`,
       duration: this.estimateAudioDuration(audioFile.data), // 估算时长
+      bpm: beatmapset.bpm || 0, // 保存 API 获取的 BPM
       addedDate: new Date().toISOString(),
     };
 

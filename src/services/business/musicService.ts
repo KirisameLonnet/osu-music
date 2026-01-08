@@ -14,6 +14,7 @@ interface Playlist {
   coverUrl?: string;
   createdAt: Date;
   updatedAt: Date;
+  isDefault?: boolean;
 }
 
 export class MusicService {
@@ -167,7 +168,7 @@ export class MusicService {
     }
   }
 
-  // 保存音乐库
+  // 保存音乐库 (追加)
   private async saveMusicLibrary(tracks: MusicTrack[]): Promise<void> {
     try {
       const existingTracks = await this.getMusicLibrary();
@@ -180,11 +181,22 @@ export class MusicService {
     }
   }
 
+  // 更新整个音乐库 (覆盖)
+  public async updateMusicLibrary(tracks: MusicTrack[]): Promise<void> {
+    try {
+      await this.platform.setStorage('music-library', JSON.stringify(tracks));
+      console.log(`[MusicService] Updated library with ${tracks.length} tracks`);
+    } catch (error) {
+      console.error('[MusicService] Failed to update music library:', error);
+      throw error;
+    }
+  }
+
   // 创建播放列表
-  async createPlaylist(name: string, tracks: MusicTrack[] = []): Promise<Playlist> {
+  async createPlaylist(name: string, tracks: MusicTrack[] = [], id?: string): Promise<Playlist> {
     try {
       const playlist: Playlist = {
-        id: this.generateId(),
+        id: id || this.generateId(),
         name,
         tracks,
         createdAt: new Date(),
@@ -192,7 +204,9 @@ export class MusicService {
       };
 
       // 保存播放列表文件
-      const playlistPath = `Playlists/${this.sanitizeFileName(name)}.json`;
+      // 使用绝对路径以确保文件写入正确位置
+      // 使用 ID 作为文件名，避免重名冲突
+      const playlistPath = `${this.playlistsDirectory}/${playlist.id}.json`;
       await this.platform.writeFile({
         path: playlistPath,
         data: JSON.stringify(playlist, null, 2),
@@ -205,6 +219,23 @@ export class MusicService {
       return playlist;
     } catch (error) {
       console.error('[MusicService] Failed to create playlist:', error);
+      throw error;
+    }
+  }
+
+  // 保存播放列表 (更新)
+  async savePlaylist(playlist: Playlist): Promise<void> {
+    try {
+      playlist.updatedAt = new Date();
+      // 使用 ID 作为文件名
+      const playlistPath = `${this.playlistsDirectory}/${playlist.id}.json`;
+      await this.platform.writeFile({
+        path: playlistPath,
+        data: JSON.stringify(playlist, null, 2),
+      });
+      console.log('[MusicService] Saved playlist:', playlist.name);
+    } catch (error) {
+      console.error('[MusicService] Failed to save playlist:', error);
       throw error;
     }
   }
@@ -232,7 +263,7 @@ export class MusicService {
       });
 
       const sanitizedFilename = this.sanitizeFileName(filename);
-      const filePath = `Music/${sanitizedFilename}`;
+      const filePath = `${this.musicDirectory}/${sanitizedFilename}`;
 
       // 保存文件
       await this.platform.writeFile({
@@ -358,57 +389,137 @@ export class MusicService {
       const existingTracks = await this.getMusicLibrary();
       const existingPaths = new Set(existingTracks.map((track) => track.filePath));
 
-      // 扫描音乐目录（在iOS上是根目录，其他平台是Music文件夹）
-      try {
-        const scanDirectory = this.musicDirectory || '.'; // 空字符串或'.'表示根目录
-        const files = await this.platform.listDirectory(scanDirectory);
-        const newTracks: MusicTrack[] = [];
+      const platformInfo = this.platform.getPlatformInfo();
+      const newTracks: MusicTrack[] = [];
 
-        for (const file of files) {
-          // 在iOS上，文件直接在根目录，路径就是文件名
-          // 在其他平台，保持原有的Music/filename格式
-          const filePath = this.musicDirectory ? `${this.musicDirectory}/${file.name}` : file.name;
+      // Electron 平台：使用 IPC 调用主进程读取元数据（包括 duration）
+      if (platformInfo.type === 'electron' && window.electron?.ipcRenderer) {
+        try {
+          console.log('[MusicService] Using Electron IPC for metadata reading...');
+          const result = (await window.electron.ipcRenderer.invoke('scan-music-folder')) as {
+            success: boolean;
+            files?: Array<{
+              id: string;
+              title: string;
+              artist: string;
+              album?: string;
+              duration?: number;
+              filePath: string;
+              fileName: string;
+              coverUrl?: string;
+              addedDate: string;
+            }>;
+            error?: string;
+          };
 
-          // 检查是否是音频文件且不在现有库中
-          if (this.isAudioFile(file.name) && !existingPaths.has(filePath)) {
-            const trackInfo = this.parseTrackInfo(file.name);
-            const track: MusicTrack = {
-              id: this.generateId(),
-              title: trackInfo.title,
-              artist: trackInfo.artist || 'Unknown Artist',
-              fileName: file.name,
-              duration: 0,
-              filePath,
-              addedDate: new Date().toISOString(),
-            };
+          if (result.success && result.files) {
+            // 创建文件路径到元数据的映射，用于更新现有曲目
+            const fileMetadataMap = new Map(result.files.map((f) => [f.filePath, f]));
+            let updatedCount = 0;
 
-            // 如果有封面 URL，添加到轨道信息中
-            if (trackInfo.coverUrl) {
-              track.coverUrl = trackInfo.coverUrl;
+            // 更新现有曲目的 duration（如果它们的 duration 为 0 或缺失）
+            for (const track of existingTracks) {
+              const metadata = fileMetadataMap.get(track.filePath);
+              if (metadata && (!track.duration || track.duration === 0) && metadata.duration) {
+                track.duration = metadata.duration;
+                updatedCount++;
+                console.log(
+                  '[MusicService] Updated duration for:',
+                  track.title,
+                  `(${track.duration}s)`,
+                );
+              }
             }
 
-            // 如果有 beatmap ID，添加额外信息
-            if (trackInfo.beatmapId) {
-              track.album = `osu! Beatmap #${trackInfo.beatmapId}`;
+            if (updatedCount > 0) {
+              // 保存更新后的现有曲目
+              await this.platform.setStorage('music-library', JSON.stringify(existingTracks));
+              console.log(`[MusicService] Updated duration for ${updatedCount} existing tracks.`);
             }
 
-            newTracks.push(track);
-            console.log('[MusicService] Found new track:', track.title);
+            // 添加新曲目
+            for (const file of result.files) {
+              if (!existingPaths.has(file.filePath)) {
+                const trackInfo = this.parseTrackInfo(file.fileName);
+                const track: MusicTrack = {
+                  id: this.generateId(),
+                  title: trackInfo.title || file.title,
+                  artist: trackInfo.artist || file.artist || 'Unknown Artist',
+                  fileName: file.fileName,
+                  duration: file.duration || 0,
+                  filePath: file.filePath,
+                  addedDate: file.addedDate || new Date().toISOString(),
+                };
+
+                if (trackInfo.coverUrl) {
+                  track.coverUrl = trackInfo.coverUrl;
+                }
+
+                if (trackInfo.beatmapId) {
+                  track.album = `osu! Beatmap #${trackInfo.beatmapId}`;
+                }
+
+                newTracks.push(track);
+                console.log('[MusicService] Found new track:', track.title, `(${track.duration}s)`);
+              }
+            }
+          } else if (result.error) {
+            console.warn('[MusicService] Electron scan-music-folder error:', result.error);
           }
+        } catch (error) {
+          console.warn('[MusicService] Electron IPC failed, falling back to listDirectory:', error);
         }
+      }
 
-        if (newTracks.length > 0) {
-          await this.saveMusicLibrary(newTracks);
-          console.log(`[MusicService] Added ${newTracks.length} new tracks to library.`);
+      // 非 Electron 平台或 IPC 失败时的回退方案
+      if (newTracks.length === 0 && platformInfo.type !== 'electron') {
+        try {
+          const scanDirectory = this.musicDirectory || '.';
+          const files = await this.platform.listDirectory(scanDirectory);
 
-          // 异步加载所有新音轨的封面
-          console.log('[MusicService] Starting to load covers for new tracks...');
-          const coverPromises = newTracks.map((track) => this.loadTrackCover(track));
-          await Promise.allSettled(coverPromises);
-          console.log('[MusicService] Finished loading covers for new tracks.');
+          for (const file of files) {
+            const filePath = this.musicDirectory
+              ? `${this.musicDirectory}/${file.name}`
+              : file.name;
+
+            if (this.isAudioFile(file.name) && !existingPaths.has(filePath)) {
+              const trackInfo = this.parseTrackInfo(file.name);
+              const track: MusicTrack = {
+                id: this.generateId(),
+                title: trackInfo.title,
+                artist: trackInfo.artist || 'Unknown Artist',
+                fileName: file.name,
+                duration: 0, // 非 Electron 平台暂不支持读取时长
+                filePath,
+                addedDate: new Date().toISOString(),
+              };
+
+              if (trackInfo.coverUrl) {
+                track.coverUrl = trackInfo.coverUrl;
+              }
+
+              if (trackInfo.beatmapId) {
+                track.album = `osu! Beatmap #${trackInfo.beatmapId}`;
+              }
+
+              newTracks.push(track);
+              console.log('[MusicService] Found new track:', track.title);
+            }
+          }
+        } catch (error) {
+          console.warn('[MusicService] Could not scan Music directory:', error);
         }
-      } catch (error) {
-        console.warn('[MusicService] Could not scan Music directory:', error);
+      }
+
+      if (newTracks.length > 0) {
+        await this.saveMusicLibrary(newTracks);
+        console.log(`[MusicService] Added ${newTracks.length} new tracks to library.`);
+
+        // 异步加载所有新音轨的封面
+        console.log('[MusicService] Starting to load covers for new tracks...');
+        const coverPromises = newTracks.map((track) => this.loadTrackCover(track));
+        await Promise.allSettled(coverPromises);
+        console.log('[MusicService] Finished loading covers for new tracks.');
       }
 
       console.log('[MusicService] Music library sync completed.');

@@ -26,6 +26,8 @@ export class AudioService {
   private eventListeners: Partial<AudioServiceEvents> = {};
   private currentTrack: MusicTrack | null = null;
   private platform: PlatformService;
+  // Store bound event handlers for proper cleanup
+  private boundHandlers: Map<string, EventListener> = new Map();
 
   constructor() {
     this.platform = getPlatformService();
@@ -130,45 +132,55 @@ export class AudioService {
   private setupAudioEventListeners() {
     if (!this.audio) return;
 
-    this.audio.addEventListener('play', () => {
-      this.emit('play');
-    });
+    // Clear any previous handlers
+    this.boundHandlers.clear();
 
-    this.audio.addEventListener('pause', () => {
-      this.emit('pause');
-    });
-
-    this.audio.addEventListener('ended', () => {
-      this.emit('ended');
-    });
-
-    this.audio.addEventListener('timeupdate', () => {
+    const playHandler = () => this.emit('play');
+    const pauseHandler = () => this.emit('pause');
+    const endedHandler = () => this.emit('ended');
+    const timeupdateHandler = () => {
       if (this.audio) {
         this.emit('timeupdate', this.audio.currentTime);
       }
-    });
-
-    this.audio.addEventListener('durationchange', () => {
+    };
+    const durationchangeHandler = () => {
       if (this.audio && !isNaN(this.audio.duration)) {
         this.emit('durationchange', this.audio.duration);
       }
-    });
-
-    this.audio.addEventListener('canplay', () => {
-      this.emit('canplay');
-    });
-
-    this.audio.addEventListener('error', (e) => {
-      const error = new Error(`Audio loading error: ${e.message || 'Unknown error'}`);
+    };
+    const canplayHandler = () => this.emit('canplay');
+    const errorHandler = (e: Event) => {
+      const error = new Error(
+        `Audio loading error: ${(e as ErrorEvent).message || 'Unknown error'}`,
+      );
       console.error('Audio error:', error);
       this.emit('error', error);
-    });
-
-    this.audio.addEventListener('volumechange', () => {
+    };
+    const volumechangeHandler = () => {
       if (this.audio) {
         this.emit('volumechange', this.audio.volume);
       }
-    });
+    };
+
+    // Store handlers for cleanup
+    this.boundHandlers.set('play', playHandler);
+    this.boundHandlers.set('pause', pauseHandler);
+    this.boundHandlers.set('ended', endedHandler);
+    this.boundHandlers.set('timeupdate', timeupdateHandler);
+    this.boundHandlers.set('durationchange', durationchangeHandler);
+    this.boundHandlers.set('canplay', canplayHandler);
+    this.boundHandlers.set('error', errorHandler as EventListener);
+    this.boundHandlers.set('volumechange', volumechangeHandler);
+
+    // Add event listeners
+    this.audio.addEventListener('play', playHandler);
+    this.audio.addEventListener('pause', pauseHandler);
+    this.audio.addEventListener('ended', endedHandler);
+    this.audio.addEventListener('timeupdate', timeupdateHandler);
+    this.audio.addEventListener('durationchange', durationchangeHandler);
+    this.audio.addEventListener('canplay', canplayHandler);
+    this.audio.addEventListener('error', errorHandler);
+    this.audio.addEventListener('volumechange', volumechangeHandler);
   }
 
   // 播放
@@ -243,14 +255,13 @@ export class AudioService {
   private cleanup(): void {
     if (this.audio) {
       this.audio.pause();
-      this.audio.removeEventListener('play', () => {});
-      this.audio.removeEventListener('pause', () => {});
-      this.audio.removeEventListener('ended', () => {});
-      this.audio.removeEventListener('timeupdate', () => {});
-      this.audio.removeEventListener('durationchange', () => {});
-      this.audio.removeEventListener('canplay', () => {});
-      this.audio.removeEventListener('error', () => {});
-      this.audio.removeEventListener('volumechange', () => {});
+
+      // Remove all event listeners using stored handler references
+      this.boundHandlers.forEach((handler, eventName) => {
+        this.audio?.removeEventListener(eventName, handler);
+      });
+      this.boundHandlers.clear();
+
       this.audio.src = '';
       this.audio = null;
     }

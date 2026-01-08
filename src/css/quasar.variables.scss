@@ -1,70 +1,57 @@
 // src/css/quasar.variables.scss
-@use 'sass:color'; // <--- 在文件最顶部添加这一行
+// osu! Lazer 风格设计系统
+@use 'sass:color';
 
-// --- Core Palette ---
-$primary: #ff4081; // Osu! Lazer 风格的亮粉色
-$secondary: #00e5ff; // 明亮的青色
-$accent: #9c27b0; // 紫色
+// === Core Palette ===
+$primary: #ff66aa; // osu! Lazer 亮粉色 (主强调色)
+$secondary: #00e5ff; // 亮青色
+$accent: #e91e63; // 深粉红
 
-// --- Layout Backgrounds ---
-$dark-page: #121218; // 页面主要内容的深色背景
-$glass-base-color: rgba(30, 30, 35, 0.75); // 毛玻璃效果的基础颜色 (半透明)
-$header-bg: $glass-base-color; // Header 使用毛玻璃基础色
-$drawer-bg: $glass-base-color; // Drawer 使用毛玻璃基础色
+// === Semantic Colors ===
+$positive: #4caf50;
+$negative: #f44336;
+$info: #2196f3;
+$warning: #ff9800;
 
-// --- Text Colors ---
-$header-text: #f0f0f0; // Header 文本颜色
-$drawer-text: #e0e0e0; // Drawer 文本颜色
-$page-text: #e0e0e0; // 页面主要文本颜色
-$active-item-text: $primary; // 激活项文本颜色
-$active-item-bg: rgba($primary, 0.2); // 激活项背景颜色
-
-// --- Other Variables ---
-$border-radius-root: 8px; // 全局圆角
-
-// 融合风格的颜色尝试
-$primary   : #ff66aa; // Osu! Lazer 风格的亮粉色
-$secondary : #00e5ff; // Osu! Lazer 风格的亮青色
-$accent    : #e91e63; // Apple Music 风格的深粉红或红色作为点缀
-
-$dark      : #101018; // 深邃的蓝紫色调暗背景，带一点科技感
-$dark-page : #08080c; // 更深的页面背景
-
-$positive  : #4caf50;
-$negative  : #f44336;
-$info      : #2196f3;
-$warning   : #ff9800;
-
-// 文本颜色
-$text-color-on-dark: rgba(255, 255, 255, 0.87);
-$text-color-on-dark-secondary: rgba(255, 255, 255, 0.6);
-
-// 考虑加入一些 Osu! Lazer 风格的霓虹色变量，供特定组件使用
+// === Neon Accents (用于特效) ===
 $neon-pink: #ff00ff;
 $neon-blue: #00ffff;
 
-// 排版
-$typography-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-// $typography-letter-spacing: 0.025em; // 轻微增加字母间距，增加现代感
+// === Surface Layers (层级背景) ===
+$dark: #101018; // 深色基底
+$dark-page: #08080c; // 最深页面背景 (Atmosphere)
+$glass-base-color: rgba(30, 30, 35, 0.75); // 毛玻璃面板
 
-// 边框
-$border-radius-root: 8px; // 基础圆角
-
-// === Custom Variables for Layout (from MainLayout discussion) ===
+// === Layout Backgrounds ===
 $header-bg: $dark;
 $footer-bg: $dark;
-// $drawer-bg: lighten($dark, 5%); // 旧的代码，注释掉或删除
-$drawer-bg: color.adjust($dark, $lightness: 5%); // <--- 修改这里
+$drawer-bg: color.adjust($dark, $lightness: 5%);
 
+// === Text Colors ===
+$page-text: #ffffff; // 页面主文本颜色
 $header-text: #ffffff;
 $footer-text: #ffffff;
 $drawer-text: #e0e0e0;
+$text-color-on-dark: rgba(255, 255, 255, 0.87);
+$text-color-on-dark-secondary: rgba(255, 255, 255, 0.6);
 
+// === Interactive States ===
 $active-item-text: $primary;
 $active-item-bg: rgba($primary, 0.15);
 
-// 下面的注释可以移除了，因为我们已经应用了修复
-// Fix for $drawer-bg using lighten()
-// You'll need @use 'sass:color'; at the top of this file if not already globally available
-// Assuming @use 'sass:color'; is present or globally available:
-// $drawer-bg: color.adjust($dark, $lightness: 5%);
+// === Typography ===
+$typography-font-family:
+  'Inter',
+  -apple-system,
+  BlinkMacSystemFont,
+  'Segoe UI',
+  Roboto,
+  Helvetica,
+  Arial,
+  sans-serif,
+  'Apple Color Emoji',
+  'Segoe UI Emoji',
+  'Segoe UI Symbol';
+
+// === Borders ===
+$border-radius-root: 8px;

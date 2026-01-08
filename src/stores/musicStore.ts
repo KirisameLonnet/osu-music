@@ -8,10 +8,11 @@ export interface MusicTrack {
   title: string;
   fileName: string;
   filePath: string;
-  duration?: number | undefined; // 可选
+  duration?: number | undefined;
   artist?: string;
   album?: string;
   coverUrl?: string;
+  bpm?: number; // 从 osu! API 获取
   addedDate: string;
 }
 
@@ -33,6 +34,7 @@ export const useMusicStore = defineStore('music', () => {
   const error = ref<string | null>(null);
   const currentTrack = ref<MusicTrack | null>(null);
   const isPlaying = ref(false);
+  const favoriteIds = ref<Set<string>>(new Set());
 
   // 新增状态
   const shuffleMode = ref<ShuffleMode>('off');
@@ -640,6 +642,7 @@ export const useMusicStore = defineStore('music', () => {
     duration,
     playQueue,
     currentQueueIndex,
+    favoriteIds,
 
     // 计算属性
     totalTracks,
@@ -677,6 +680,105 @@ export const useMusicStore = defineStore('music', () => {
     cleanupMusicLibrary,
     syncMusicLibrary,
     resetMusicLibrary,
+    // Favorites & BPM
+    toggleFavorite: async (track: MusicTrack) => {
+      // 查找或创建 Favorites 播放列表
+      // 查找或创建 Favorites 播放列表 (Standard: id='my-favorites')
+      const playlists = await musicService.getPlaylists();
+      let favPlaylist = playlists.find((p) => p.id === 'my-favorites');
+
+      if (!favPlaylist) {
+        // 创建新的默认收藏夹，强制使用 ID 'my-favorites'
+        favPlaylist = await musicService.createPlaylist('我的收藏', [], 'my-favorites');
+        // 标记为默认
+        favPlaylist.isDefault = true;
+        await musicService.savePlaylist(favPlaylist);
+      }
+
+      // 检查是否已收藏
+      const index = favPlaylist.tracks.findIndex((t) => t.id === track.id);
+      if (index > -1) {
+        // 取消收藏
+        favPlaylist.tracks.splice(index, 1);
+        console.log(`[MusicStore] Removed ${track.title} from Favorites`);
+      } else {
+        // 添加收藏
+        favPlaylist.tracks.push(track);
+        console.log(`[MusicStore] Added ${track.title} to Favorites`);
+      }
+
+      // 保存播放列表
+      await musicService.savePlaylist(favPlaylist);
+      // 强制更新当前播放列表如果它就是 Favorites
+      if (currentPlaylist.value?.id === favPlaylist.id) {
+        currentPlaylist.value = favPlaylist;
+      }
+    },
+
+    isFavorite: (trackId: string) => {
+      // 使用响应式缓存进行检查
+      return favoriteIds.value.has(trackId);
+    },
+
+    // 初始化收藏列表缓存 (用于同步检查)
+    initFavorites: async () => {
+      const playlists = await musicService.getPlaylists();
+      // 仅查找标准收藏夹
+      const favPlaylist = playlists.find((p) => p.id === 'my-favorites');
+      if (favPlaylist) {
+        favoriteIds.value = new Set(favPlaylist.tracks.map((t) => t.id));
+      } else {
+        favoriteIds.value = new Set();
+      }
+      return favoriteIds.value;
+    },
+
+    // 补全缺失的 BPM 信息
+    fetchMissingBpm: async () => {
+      const { osuHttpService } = await import('src/services/api/httpService');
+      const { BeatmapFileNameParser } = await import('src/utils/beatmapFileNameParser');
+
+      console.log('[MusicStore] Checking for tracks with missing BPM...');
+      let updatedCount = 0;
+      // 创建副本以避免直接修改引用导致的潜在问题
+      const currentTracks = JSON.parse(JSON.stringify(tracks.value));
+
+      for (const track of currentTracks) {
+        if (!track.bpm || track.bpm === 0) {
+          // 尝试从文件名解析 beatmapId
+          const parsed = BeatmapFileNameParser.parseBeatmapFileName(track.fileName);
+          if (parsed && parsed.beatmapId) {
+            try {
+              // 从 API 获取 beatmapset 信息
+              // 注意：这里假设通过 beatmapset 获取，实际 API 可能需要调整
+              // 使用 osuHttpService 获取
+              const response = await osuHttpService.get<{ bpm: number }>(
+                `/beatmapsets/${parsed.beatmapId}`,
+              );
+              if (response.data && response.data.bpm) {
+                track.bpm = response.data.bpm;
+                updatedCount++;
+                console.log(`[MusicStore] Fetched BPM for ${track.title}: ${track.bpm}`);
+
+                // 避免 API 速率限制，加一点延迟
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              }
+            } catch (e) {
+              console.warn(`[MusicStore] Failed to fetch BPM for ${track.title}:`, e);
+            }
+          }
+        }
+      }
+
+      if (updatedCount > 0) {
+        // 使用 updateMusicLibrary (覆盖)
+        await musicService.updateMusicLibrary(currentTracks);
+        tracks.value = currentTracks; // 更新本地状态
+        console.log(`[MusicStore] Updated BPM for ${updatedCount} tracks.`);
+      } else {
+        console.log('[MusicStore] No missing BPMs found or failed to fetch.');
+      }
+    },
   };
 });
 

@@ -51,10 +51,16 @@ async function startOAuthFlow() {
       );
     }
 
+    // 获取正确的回调 URL (Linux 使用 localhost)
+    let redirectUri = 'osu-music-fusion://oauth/callback';
+    if (window.electron?.ipcRenderer) {
+      redirectUri = (await window.electron.ipcRenderer.invoke('get-oauth-callback-url')) as string;
+    }
+
     console.log('[OsuCallbackPage] Starting OAuth with settings:', {
       clientId: settingsStore.osuClientId,
       clientSecret: settingsStore.osuClientSecret ? '***' : 'missing',
-      redirectUri: 'osu-music-fusion://oauth/callback',
+      redirectUri,
     });
 
     // 如果是Capacitor平台，先注册平台服务实例到深链接处理器
@@ -68,13 +74,14 @@ async function startOAuthFlow() {
 
     statusMessage.value = 'Opening OAuth browser...';
     console.log(
-      '[OsuCallbackPage] Important: Make sure the OSU! developer console has this redirect URI: osu-music-fusion://oauth/callback',
+      '[OsuCallbackPage] Important: Make sure the OSU! developer console has this redirect URI:',
+      redirectUri,
     );
 
     const result = await platform.openOAuth({
       clientId: settingsStore.osuClientId,
       clientSecret: settingsStore.osuClientSecret,
-      redirectUri: 'osu-music-fusion://oauth/callback',
+      redirectUri,
       scopes: ['identify', 'public', 'friends.read', 'chat.read'],
       authUrl: 'https://osu.ppy.sh/oauth/authorize',
       tokenUrl: 'https://osu.ppy.sh/oauth/token',

@@ -1,13 +1,14 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import os from 'os';
+import http from 'http'; // 新增: 用于 Linux 本地 OAuth 回调服务器
 import { fileURLToPath } from 'url';
 import type { Schema } from 'electron-store';
-import Store from 'electron-store'; // 导入 electron-store 和 Schema
+import Store from 'electron-store';
 import axios from 'axios';
-import type { AxiosError } from 'axios'; // 新增: 用于主进程 token 交换
-import fs from 'fs/promises'; // 新增: 用于文件系统操作
-import * as mm from 'music-metadata'; // 新增: 音频元数据读取
+import type { AxiosError } from 'axios';
+import fs from 'fs/promises';
+import * as mm from 'music-metadata';
 
 // Windows 调试优化配置
 if (process.platform === 'win32' && process.env.NODE_ENV === 'development') {
@@ -170,8 +171,22 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-// 注册自定义协议
-app.setAsDefaultProtocolClient(PROTOCOL_SCHEME);
+// 注册自定义协议 (Linux 开发模式需要特殊处理)
+if (process.platform === 'linux' && process.env.DEV) {
+  // Linux 开发模式：需要传入 electron 可执行文件和脚本路径
+  const electronPath = process.execPath;
+  const appPath = path.resolve(currentDir, '..');
+  console.log('[Main Process] Linux dev mode - registering protocol with:', {
+    electronPath,
+    appPath,
+  });
+  app.setAsDefaultProtocolClient(PROTOCOL_SCHEME, electronPath, [appPath]);
+} else {
+  app.setAsDefaultProtocolClient(PROTOCOL_SCHEME);
+}
+console.log(
+  `[Main Process] Protocol ${PROTOCOL_SCHEME}:// registered, platform: ${process.platform}, dev: ${!!process.env.DEV}`,
+);
 
 // 处理通过自定义协议打开应用的 URL
 let pendingAuthCode: string | null = null; // 用于暂存 code
@@ -232,6 +247,94 @@ ipcMain.handle('get-pending-oauth-code', () => {
   }
 });
 
+// ========== Linux 本地 OAuth 回调服务器 ==========
+const OAUTH_CALLBACK_PORT = 42069;
+let oauthCallbackServer: http.Server | null = null;
+
+/**
+ * 启动本地 OAuth 回调服务器 (Linux 开发模式专用)
+ */
+function startOAuthCallbackServer(): void {
+  if (oauthCallbackServer) {
+    console.log('[OAuth Server] Already running');
+    return;
+  }
+
+  oauthCallbackServer = http.createServer((req, res) => {
+    const url = new URL(req.url || '/', `http://localhost:${OAUTH_CALLBACK_PORT}`);
+
+    if (url.pathname === '/oauth/callback') {
+      const code = url.searchParams.get('code');
+      const error = url.searchParams.get('error');
+      const errorDescription = url.searchParams.get('error_description');
+
+      console.log('[OAuth Server] Received callback:', { code: code ? '***' : null, error });
+
+      // 返回成功页面
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>OSU! Music - OAuth</title>
+          <style>
+            body { font-family: system-ui; background: #121218; color: #fff; 
+                   display: flex; justify-content: center; align-items: center; 
+                   height: 100vh; margin: 0; }
+            .container { text-align: center; }
+            h1 { color: #ff66aa; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>${error ? '❌ Login Failed' : '✅ Login Successful!'}</h1>
+            <p>${error ? errorDescription || error : 'You can close this window and return to the app.'}</p>
+          </div>
+        </body>
+        </html>
+      `);
+
+      // 转发到主窗口
+      if (error) {
+        mainWindow?.webContents.send('oauth-error-received', {
+          error,
+          description: errorDescription,
+        });
+      } else if (code) {
+        pendingAuthCode = code;
+        mainWindow?.show();
+        mainWindow?.focus();
+        mainWindow?.webContents.send('oauth-callback-pending');
+        console.log('[OAuth Server] Sent oauth-callback-pending to renderer');
+      }
+    } else {
+      res.writeHead(404);
+      res.end('Not Found');
+    }
+  });
+
+  oauthCallbackServer.listen(OAUTH_CALLBACK_PORT, '127.0.0.1', () => {
+    console.log(
+      `[OAuth Server] Listening on http://127.0.0.1:${OAUTH_CALLBACK_PORT}/oauth/callback`,
+    );
+  });
+
+  oauthCallbackServer.on('error', (err) => {
+    console.error('[OAuth Server] Error:', err);
+    oauthCallbackServer = null;
+  });
+}
+
+// Electron 标准登录方式：始终启动本地回调服务器
+startOAuthCallbackServer();
+
+// IPC: 获取 OAuth 回调 URL (用于渲染进程)
+ipcMain.handle('get-oauth-callback-url', () => {
+  // 统一使用 localhost 回调（更可靠，跨平台兼容）
+  return `http://127.0.0.1:${OAUTH_CALLBACK_PORT}/oauth/callback`;
+});
+
 async function createWindow() {
   /**
    * Initial window options
@@ -270,12 +373,12 @@ async function createWindow() {
         // 强制软件渲染以避免 GPU 兼容性问题
         offscreen: false,
       };
-      
+
       // 禁用硬件加速以提高 ARM64 兼容性
       if (!app.isReady()) {
         app.disableHardwareAcceleration();
       }
-      
+
       console.log('🔧 [Windows ARM64] Applied ARM64-specific optimizations');
     } else {
       // x64 优化设置
@@ -297,9 +400,12 @@ async function createWindow() {
   mainWindow.once('ready-to-show', () => {
     if (mainWindow) {
       mainWindow.show();
-      
+
       // ARM64 特定：延迟一点确保渲染稳定
-      if (process.platform === 'win32' && (process.arch === 'arm64' || process.env.ELECTRON_BUILDER_ARCH === 'arm64')) {
+      if (
+        process.platform === 'win32' &&
+        (process.arch === 'arm64' || process.env.ELECTRON_BUILDER_ARCH === 'arm64')
+      ) {
         setTimeout(() => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.focus();

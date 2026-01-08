@@ -4,13 +4,67 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, onUnmounted } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SafeArea } from '@capacitor-community/safe-area';
+import { handleOsuCallback } from 'src/services/api/osuAuthService';
+import { useAuthStore } from 'src/stores/authStore';
+import { Notify } from 'quasar';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
+
+// OAuth callback handler for Electron
+const handleOAuthCallback = async () => {
+  console.log('[App] OAuth callback pending event received');
+  try {
+    // 从主进程获取暂存的授权码
+    const result = (await window.electron?.ipcRenderer?.invoke('get-pending-oauth-code')) as
+      | { success: boolean; code?: string; error?: string }
+      | undefined;
+    console.log('[App] get-pending-oauth-code result:', result);
+
+    if (result?.success && result.code) {
+      console.log('[App] Processing OAuth code...');
+      const success = await handleOsuCallback(result.code);
+      if (success) {
+        Notify.create({ type: 'positive', message: 'Login successful!' });
+        // 刷新用户状态
+        const authStore = useAuthStore();
+        await authStore.fetchUserProfile();
+        // 导航到首页
+        router.push('/');
+      }
+    } else {
+      console.error('[App] Failed to get pending OAuth code:', result?.error);
+    }
+  } catch (error) {
+    console.error('[App] Error processing OAuth callback:', error);
+    Notify.create({ type: 'negative', message: 'Login failed. Please try again.' });
+  }
+};
+
+// OAuth error handler for Electron
+const handleOAuthError = (_event: unknown, ...args: unknown[]) => {
+  const data = args[0] as { error?: string; description?: string } | undefined;
+  console.error('[App] OAuth error received:', data);
+  Notify.create({
+    type: 'negative',
+    message: `OAuth error: ${data?.error || 'Unknown error'}${data?.description ? ` - ${data.description}` : ''}`,
+    timeout: 10000,
+  });
+};
 
 // 应用启动时初始化 Edge-to-Edge 模式
 onMounted(async () => {
+  // Electron 环境：设置 OAuth 回调监听器
+  if (window.electron?.ipcRenderer) {
+    console.log('[App] Setting up Electron OAuth listeners...');
+    window.electron.ipcRenderer.on('oauth-callback-pending', handleOAuthCallback);
+    window.electron.ipcRenderer.on('oauth-error-received', handleOAuthError);
+  }
+
   // 仅在原生平台上执行
   if (Capacitor.isNativePlatform()) {
     try {
@@ -68,6 +122,14 @@ onMounted(async () => {
     } catch (error) {
       console.warn('[App] Failed to enable Edge-to-Edge mode:', error);
     }
+  }
+});
+
+// 清理事件监听器
+onUnmounted(() => {
+  if (window.electron?.ipcRenderer) {
+    window.electron.ipcRenderer.removeAllListeners('oauth-callback-pending');
+    window.electron.ipcRenderer.removeAllListeners('oauth-error-received');
   }
 });
 </script>

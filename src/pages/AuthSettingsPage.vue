@@ -221,13 +221,19 @@ const form = ref({
   osuClientSecret: '',
 });
 
-// 这个值应该与 osuAuthService.ts 中的 OSU_REDIRECT_URI 和 Electron 主进程配置一致
-const osuCallbackUriToDisplay = ref<string>('osu-music-fusion://oauth/callback');
+// 回调 URI（会从 IPC 动态获取）
+const osuCallbackUriToDisplay = ref<string>('http://127.0.0.1:42069/oauth/callback');
 
 // PKCE
 const canLogin = computed(() => !!settingsStore.osuClientId && !!settingsStore.osuClientSecret);
 
-onMounted(() => {
+onMounted(async () => {
+  // 从主进程获取正确的回调 URL
+  if (window.electron?.ipcRenderer) {
+    const url = await window.electron.ipcRenderer.invoke('get-oauth-callback-url');
+    osuCallbackUriToDisplay.value = url as string;
+  }
+
   // 从 store 加载已保存的设置到表单
   form.value.osuClientId = settingsStore.osuClientId || '';
   form.value.osuClientSecret = settingsStore.osuClientSecret || '';
@@ -240,17 +246,7 @@ const currentPlatform = computed(() => {
 });
 
 const currentRedirectUri = computed(() => {
-  const info = platform.getPlatformInfo();
-  switch (info.type) {
-    case 'electron':
-      return 'osu-music-fusion://oauth/callback';
-    case 'ios':
-      return 'osu-music-fusion://oauth/callback';
-    case 'android':
-      return 'osu-music-fusion://oauth/callback';
-    default:
-      return `${window.location.origin}/oauth/callback`;
-  }
+  return osuCallbackUriToDisplay.value;
 });
 
 function onSaveAuthConfig() {

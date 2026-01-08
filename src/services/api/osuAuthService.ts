@@ -2,6 +2,7 @@
 import { useAuthStore } from 'src/stores/authStore';
 import { useSettingsStore } from 'stores/settingsStore';
 import { getPlatformService } from '../core/platform';
+import { Notify } from 'quasar';
 
 // OAuth 配置常量
 const OSU_AUTHORIZE_URL = 'https://osu.ppy.sh/oauth/authorize';
@@ -21,8 +22,14 @@ interface OsuTokenResponse {
 /**
  * 获取平台特定的重定向 URI
  */
-function getRedirectUri(): string {
+async function getRedirectUri(): Promise<string> {
   const platformInfo = platform.getPlatformInfo();
+
+  if (platformInfo.type === 'electron' && window.electron?.ipcRenderer) {
+    // 从主进程获取正确的回调 URL (Linux 使用 localhost)
+    const url = await window.electron.ipcRenderer.invoke('get-oauth-callback-url');
+    return url as string;
+  }
 
   switch (platformInfo.type) {
     case 'electron':
@@ -46,12 +53,15 @@ export async function redirectToOsuLogin(): Promise<void> {
 
   if (typeof clientId !== 'string' || !clientId.trim()) {
     console.error('Osu! Client ID is not configured in application settings.');
-    alert('Please configure your Osu! Client ID in the Settings page.');
+    Notify.create({
+      type: 'warning',
+      message: 'Please configure your Osu! Client ID in the Settings page.',
+    });
     return;
   }
 
   try {
-    const redirectUri = getRedirectUri();
+    const redirectUri = await getRedirectUri();
     const platformInfo = platform.getPlatformInfo();
 
     if (platformInfo.type === 'electron') {
@@ -63,7 +73,10 @@ export async function redirectToOsuLogin(): Promise<void> {
     }
   } catch (error) {
     console.error('OAuth error:', error);
-    alert(`OAuth error: ${error instanceof Error ? error.message : String(error)}`);
+    Notify.create({
+      type: 'negative',
+      message: `OAuth error: ${error instanceof Error ? error.message : String(error)}`,
+    });
   }
 }
 
@@ -113,7 +126,7 @@ async function handleCapacitorOAuth(clientId: string, redirectUri: string): Prom
 
     if (oauthResult.error) {
       console.error('[OAuth] OAuth failed:', oauthResult.error, oauthResult.errorDescription);
-      alert(`OAuth failed: ${oauthResult.error}`);
+      Notify.create({ type: 'negative', message: `OAuth failed: ${oauthResult.error}` });
       return;
     }
 
@@ -124,7 +137,10 @@ async function handleCapacitorOAuth(clientId: string, redirectUri: string): Prom
     }
   } catch (error) {
     console.error('[OAuth] Error in Capacitor OAuth flow:', error);
-    alert(`OAuth error: ${error instanceof Error ? error.message : String(error)}`);
+    Notify.create({
+      type: 'negative',
+      message: `OAuth error: ${error instanceof Error ? error.message : String(error)}`,
+    });
   }
 }
 
@@ -140,7 +156,10 @@ export async function handleOsuCallback(code: string): Promise<boolean> {
 
   if (!clientId || !clientSecret) {
     console.error('Osu! Client ID or Client Secret not configured for token exchange.');
-    alert('Please configure your Osu! Client ID and Client Secret in the Settings page.');
+    Notify.create({
+      type: 'warning',
+      message: 'Please configure your Osu! Client ID and Client Secret in the Settings page.',
+    });
     return false;
   }
 
@@ -148,12 +167,12 @@ export async function handleOsuCallback(code: string): Promise<boolean> {
   const networkOk = await testNetworkConnection();
   if (!networkOk) {
     console.error('[OAuth] Network connection test failed');
-    alert('网络连接失败，请检查网络连接后重试');
+    Notify.create({ type: 'negative', message: '网络连接失败，请检查网络连接后重试' });
     return false;
   }
 
   try {
-    const redirectUri = getRedirectUri();
+    const redirectUri = await getRedirectUri();
 
     // 添加详细的调试日志
     console.log('[OAuth Debug] Token exchange parameters:');
@@ -213,19 +232,22 @@ export async function handleOsuCallback(code: string): Promise<boolean> {
         console.error('1. Client ID or Client Secret is incorrect');
         console.error("2. Redirect URI doesn't match what's registered in OSU! app");
         console.error('3. Client credentials are not properly configured');
-        alert(
-          `OAuth 错误: 客户端认证失败\n\n可能的原因:\n1. Client ID 或 Client Secret 不正确\n2. 重定向 URI 与 OSU! 应用设置中的不匹配\n3. 授权码已过期\n\n当前重定向 URI: ${getRedirectUri()}\n请检查 OSU! 开发者控制台中的设置`,
-        );
+        Notify.create({
+          type: 'negative',
+          message: `OAuth 错误: 客户端认证失败。请检查 Client ID/Secret 和重定向 URI (${getRedirectUri()})`,
+          timeout: 10000,
+        });
       } else if (errorData?.error === 'invalid_grant') {
         console.error('[OAuth] Invalid Grant - Authorization code expired or invalid');
-        alert('OAuth 错误: 授权码无效或已过期，请重新登录');
+        Notify.create({ type: 'negative', message: 'OAuth 错误: 授权码无效或已过期，请重新登录' });
       } else {
-        alert(
-          `OAuth 错误: ${errorData?.error || 'Unknown error'}\n${errorData?.error_description || ''}`,
-        );
+        Notify.create({
+          type: 'negative',
+          message: `OAuth 错误: ${errorData?.error || 'Unknown error'} ${errorData?.error_description || ''}`,
+        });
       }
     } else {
-      alert(`OAuth 错误: HTTP ${response.status}\n${JSON.stringify(response.data)}`);
+      Notify.create({ type: 'negative', message: `OAuth 错误: HTTP ${response.status}` });
     }
 
     return false;
@@ -246,7 +268,7 @@ export async function handleOsuCallback(code: string): Promise<boolean> {
       errorMessage = error;
     }
 
-    alert(`OAuth 请求失败: ${errorMessage}`);
+    Notify.create({ type: 'negative', message: `OAuth 请求失败: ${errorMessage}` });
     const authStore = useAuthStore();
     authStore.logout();
     return false;

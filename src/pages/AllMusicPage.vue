@@ -12,7 +12,7 @@
 
       <!-- 统计信息 -->
       <div class="stats-cards row q-col-gutter-md q-mt-lg">
-        <div class="col-12 col-sm-6 col-md-3">
+        <div class="col-12 col-sm-4">
           <q-card flat bordered class="stat-card">
             <q-card-section class="text-center">
               <q-icon name="music_note" size="2rem" color="primary" />
@@ -21,21 +21,21 @@
             </q-card-section>
           </q-card>
         </div>
-        <div class="col-12 col-sm-6 col-md-3">
+        <div class="col-12 col-sm-4">
           <q-card flat bordered class="stat-card">
             <q-card-section class="text-center">
-              <q-icon name="play_arrow" size="2rem" color="positive" />
-              <div class="text-h6 q-mt-sm">{{ musicStore.isPlaying ? '1' : '0' }}</div>
-              <div class="text-caption text-grey-6">Playing</div>
+              <q-icon name="schedule" size="2rem" color="secondary" />
+              <div class="text-h6 q-mt-sm">{{ totalDuration }}</div>
+              <div class="text-caption text-grey-6">Total Duration</div>
             </q-card-section>
           </q-card>
         </div>
-        <div class="col-12 col-sm-6 col-md-3">
+        <div class="col-12 col-sm-4">
           <q-card flat bordered class="stat-card">
             <q-card-section class="text-center">
-              <q-icon name="star" size="2rem" color="warning" />
-              <div class="text-h6 q-mt-sm">{{ favoriteCount }}</div>
-              <div class="text-caption text-grey-6">Favorites</div>
+              <q-icon name="person" size="2rem" color="accent" />
+              <div class="text-h6 q-mt-sm">{{ artistCount }}</div>
+              <div class="text-caption text-grey-6">Artists</div>
             </q-card-section>
           </q-card>
         </div>
@@ -362,9 +362,23 @@ const isSyncing = ref(false);
 const isCleaning = ref(false);
 
 // 计算属性
-const favoriteCount = computed(() => {
-  // TODO: 实现收藏功能后返回实际数量
-  return Math.floor(musicStore.totalTracks * 0.3);
+const totalDuration = computed(() => {
+  const seconds = musicStore.tracks.reduce((sum, track) => sum + (track.duration || 0), 0);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes} min`;
+});
+
+const artistCount = computed(() => {
+  const artists = new Set(
+    musicStore.tracks
+      .map((track) => track.artist?.trim())
+      .filter((artist) => artist && artist !== 'Unknown Artist'),
+  );
+  return artists.size;
 });
 
 // 根据屏幕比例自动选择视图模式
@@ -385,8 +399,8 @@ const filteredTracks = computed(() => {
     case 'artist':
       tracks = [...tracks].sort((a, b) => (a.artist || '').localeCompare(b.artist || ''));
       break;
-    case 'album':
-      tracks = [...tracks].sort((a, b) => (a.album || '').localeCompare(b.album || ''));
+    case 'bpm':
+      tracks = [...tracks].sort((a, b) => (b.bpm || 0) - (a.bpm || 0));
       break;
     case 'duration':
       tracks = [...tracks].sort((a, b) => (b.duration || 0) - (a.duration || 0));
@@ -405,7 +419,7 @@ const filteredTracks = computed(() => {
 const sortOptions = [
   { label: 'Title', value: 'title' },
   { label: 'Artist', value: 'artist' },
-  { label: 'Album', value: 'album' },
+  { label: 'BPM', value: 'bpm' },
   { label: 'Duration', value: 'duration' },
   { label: 'Recently Added', value: 'recent' },
 ];
@@ -529,7 +543,7 @@ const confirmDeleteTrack = (track: MusicTrack) => {
 const syncLibrary = async () => {
   isSyncing.value = true;
   try {
-    // 假设musicStore有syncMusicLibrary方法，如果没有我们可以直接调用服务
+    // 调用 store 的同步方法
     await musicStore.syncMusicLibrary();
     $q.notify({
       message: 'Library synced successfully',

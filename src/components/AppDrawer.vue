@@ -122,8 +122,18 @@ const secondaryNavLinks: NavLink[] = [
 const utilityLinks: NavLink[] = [
   { title: 'Auth Settings', icon: 'account_circle', to: '/auth-settings', name: 'authSettings' },
   { title: 'Resources', icon: 'public', to: '/resources', name: 'resources' },
-  { title: 'Platform Test', icon: 'science', to: '/platform-test', name: 'platformTest' },
-  { title: 'Safe Area Demo', icon: 'phone_iphone', to: '/safe-area-demo', name: 'safeAreaDemo' },
+  // 以下路由仅在开发模式显示
+  ...(process.env.DEV
+    ? [
+        { title: 'Platform Test', icon: 'science', to: '/platform-test', name: 'platformTest' },
+        {
+          title: 'Safe Area Demo',
+          icon: 'phone_iphone',
+          to: '/safe-area-demo',
+          name: 'safeAreaDemo',
+        },
+      ]
+    : []),
 ];
 </script>
 

@@ -5,35 +5,63 @@
       <!-- 页面头部 -->
       <div class="row items-center justify-between q-mb-lg">
         <h4 class="q-my-none text-h4 page-title">Recent Plays - 24 Hours</h4>
-        <q-btn flat dense round icon="refresh" @click="refreshScores"
-          :loading="playHistoryStore.isLoadingInitial && playHistoryStore.scores.length === 0" color="primary"
-          aria-label="Refresh scores">
+        <q-btn
+          flat
+          dense
+          round
+          icon="refresh"
+          @click="refreshScores"
+          :loading="playHistoryStore.isLoadingInitial && playHistoryStore.scores.length === 0"
+          color="primary"
+          aria-label="Refresh scores"
+        >
           <q-tooltip>Refresh</q-tooltip>
         </q-btn>
       </div>
 
       <!-- 模式选择器 -->
       <div class="mode-selector q-mb-lg">
-        <q-btn-toggle v-model="selectedMode" toggle-color="primary" :options="modeOptions"
-          @update:model-value="onModeChange" unelevated rounded />
+        <q-btn-toggle
+          v-model="selectedMode"
+          toggle-color="primary"
+          :options="modeOptions"
+          @update:model-value="onModeChange"
+          unelevated
+          rounded
+        />
       </div>
 
       <!-- 加载状态 -->
-      <div v-if="playHistoryStore.isLoadingInitial && playHistoryStore.scores.length === 0" class="loading-state">
+      <div
+        v-if="playHistoryStore.isLoadingInitial && playHistoryStore.scores.length === 0"
+        class="loading-state"
+      >
         <q-spinner-gears color="primary" size="3.5rem" />
         <p class="q-mt-md text-body1 text-grey-5">Loading your recent plays...</p>
       </div>
 
       <!-- 错误状态 -->
-      <div v-else-if="playHistoryStore.error && playHistoryStore.scores.length === 0" class="error-state">
+      <div
+        v-else-if="playHistoryStore.error && playHistoryStore.scores.length === 0"
+        class="error-state"
+      >
         <q-icon name="error_outline" color="negative" size="3rem" />
         <p class="q-mt-sm text-h6 text-negative">Oops! Something went wrong.</p>
         <p class="text-body2 text-grey-5">{{ playHistoryStore.error }}</p>
-        <q-btn label="Try Again" @click="refreshScores" color="negative" unelevated class="q-mt-md" />
+        <q-btn
+          label="Try Again"
+          @click="refreshScores"
+          color="negative"
+          unelevated
+          class="q-mt-md"
+        />
       </div>
 
       <!-- 无数据状态 -->
-      <div v-else-if="!playHistoryStore.isLoadingInitial && playHistoryStore.scores.length === 0" class="empty-state">
+      <div
+        v-else-if="!playHistoryStore.isLoadingInitial && playHistoryStore.scores.length === 0"
+        class="empty-state"
+      >
         <q-icon name="sentiment_very_dissatisfied" color="grey-7" size="3.5rem" />
         <p class="q-mt-sm text-h6 text-grey-6">No Recent Plays Found</p>
         <p class="text-body2 text-grey-5">
@@ -42,18 +70,33 @@
       </div>
 
       <!-- 得分列表 -->
-      <q-list v-if="scoresWithin24h.length > 0" bordered separator class="score-list bg-dark-elevated rounded-borders">
+      <q-list
+        v-if="scoresWithin24h.length > 0"
+        bordered
+        separator
+        class="score-list bg-dark-elevated rounded-borders"
+      >
         <ScoreListItem v-for="score in scoresWithin24h" :key="score.id" :score="score" />
       </q-list>
 
       <!-- 加载更多按钮 -->
       <div v-if="showLoadMore" class="row justify-center q-my-md">
-        <q-btn label="获取更多" color="primary" :loading="playHistoryStore.isLoadingMore" @click="onLoadMoreBtn" unelevated
-          rounded icon="expand_more" />
+        <q-btn
+          label="获取更多"
+          color="primary"
+          :loading="playHistoryStore.isLoadingMore"
+          @click="onLoadMoreBtn"
+          unelevated
+          rounded
+          icon="expand_more"
+        />
       </div>
 
       <!-- 加载更多失败提示 -->
-      <div v-if="playHistoryStore.isLoadingMore && playHistoryStore.error" class="text-center text-negative q-my-md">
+      <div
+        v-if="playHistoryStore.isLoadingMore && playHistoryStore.error"
+        class="text-center text-negative q-my-md"
+      >
         Failed to load more: {{ playHistoryStore.error }}
       </div>
     </div>
@@ -96,12 +139,32 @@ const onModeChange = () => {
   }
 };
 
-// 只展示24小时内的成绩
+// 只展示24小时内的成绩，并合并同一首歌的记录（只保留最高分）
 const scoresWithin24h = computed(() => {
   const now = Date.now();
-  return playHistoryStore.scores.filter((score) => {
+
+  // 先过滤24小时内的成绩
+  const recentScores = playHistoryStore.scores.filter((score) => {
     const created = new Date(score.created_at).getTime();
     return now - created <= 24 * 60 * 60 * 1000;
+  });
+
+  // 按 beatmapset_id 分组，只保留每首歌的最高分
+  const scoreMap = new Map<number, (typeof recentScores)[0]>();
+
+  for (const score of recentScores) {
+    const beatmapsetId = score.beatmapset?.id || score.beatmap?.beatmapset_id;
+    if (!beatmapsetId) continue;
+
+    const existing = scoreMap.get(beatmapsetId);
+    if (!existing || score.score > existing.score) {
+      scoreMap.set(beatmapsetId, score);
+    }
+  }
+
+  // 转换回数组并按时间倒序排列（最新的在前）
+  return Array.from(scoreMap.values()).sort((a, b) => {
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 });
 
@@ -163,7 +226,6 @@ watch(
 // 如果不可用，你可能需要 @import '../css/quasar.variables.scss'; (调整路径)
 // 或者直接使用硬编码的颜色值，但不推荐。
 
-
 .page-content-container {
   max-width: 900px; // 限制内容最大宽度，使其在大屏幕上更易读
 }
@@ -173,8 +235,6 @@ watch(
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-
-
 
 .loading-state,
 .error-state,
@@ -196,4 +256,5 @@ watch(
 // 例如: popup-content-class="bg-dark-elevated text-page-text"
 // 然后定义 .bg-dark-elevated:
 // .bg-dark-elevated { background-color: color.adjust($dark-page, $lightness: 8%); }
-// (已经在 <q-select> 的 popup-content-class 中添加了)</style>
+// (已经在 <q-select> 的 popup-content-class 中添加了)
+</style>
